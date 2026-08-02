@@ -105,6 +105,81 @@ def test_genera_xml_1001(db, balance_real):
     assert "ISO-8859-1" in xml
 
 
+# ---------- Terceros RUES ----------
+
+def test_carga_terceros_muestra(tmp_path, monkeypatch):
+    """El cargador de terceros lee el TXT de muestra y guarda datos correctos."""
+    import app.database as db_mod
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.models import Base as B, ThirdParty
+    import app.models  # noqa: F401
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'terceros.db'}")
+    B.metadata.create_all(engine)
+    monkeypatch.setattr(db_mod, "SessionLocal", sessionmaker(bind=engine))
+
+    from cargar_terceros import cargar_terceros
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "scripts"))
+    muestra = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "data", "terceros_muestra.txt")
+    total, duplicados = cargar_terceros(muestra)
+    assert total == 16
+    assert duplicados == 0
+    sesion = db_mod.SessionLocal()
+    assert sesion.query(ThirdParty).count() == 16
+    nit = sesion.query(ThirdParty).filter_by(doc_number="901955673").first()
+    assert nit is not None and nit.name.startswith("ANGELICAL") and nit.estado == "ACTIVA"
+    cc = sesion.query(ThirdParty).filter_by(doc_number="52233283").first()
+    assert cc is not None and cc.estado == "CANCELADA"
+    sesion.close()
+    engine.dispose()
+
+
+def test_validacion_terceros_tolerante_dv(db):
+    """La validación contra RUES tolera el dígito de verificación y detecta cancelados."""
+    from app.models import Tenant, Balance, BalanceRow
+    from app.services.validator import validar_balance
+    from app.services.puc_loader import cargar_puc
+    puc_txt = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "data", "puc.txt")
+    cargar_puc(puc_txt, db)
+    from app.models import ThirdParty
+    db.add(ThirdParty(doc_type="NIT", doc_number="901955673", name="ANGELICAL Y MANANTIAL SAS",
+                      estado="ACTIVA"))
+    db.add(ThirdParty(doc_type="CC", doc_number="52233283", name="OSANA ROJAS CORDOBA",
+                      estado="CANCELADA"))
+    db.commit()
+    t = Tenant(name="T", nit="0")
+    db.add(t)
+    db.flush()
+    bal = Balance(tenant_id=t.id, period="2025")
+    db.add(bal)
+    db.flush()
+    db.add(BalanceRow(balance_id=bal.id, tenant_id=t.id, row_type="thirdparty", code="2205",
+                      account_name="PROVEEDORES", level=4, class_id=2, nature="C",
+                      third_party_name="ANGELICAL Y MANANTIAL SAS", doc_type="NIT",
+                      doc_number="9019556735", credits=100, closing=100, saldo_normalized=100))
+    db.add(BalanceRow(balance_id=bal.id, tenant_id=t.id, row_type="thirdparty", code="1305",
+                      account_name="CLIENTES", level=4, class_id=1, nature="D",
+                      third_party_name="OSANA ROJAS CORDOBA", doc_type="CC",
+                      doc_number="52233283", debits=10, closing=10, saldo_normalized=10))
+    db.add(BalanceRow(balance_id=bal.id, tenant_id=t.id, row_type="thirdparty", code="2205",
+                      account_name="PROVEEDORES", level=4, class_id=2, nature="C",
+                      third_party_name="EMPRESA FANTASMA SAS", doc_type="NIT",
+                      doc_number="999999999", credits=10, closing=10, saldo_normalized=10))
+    db.commit()
+    validar_balance(bal.id, db)
+    nf = db.query(ValidationIssue).filter_by(balance_id=bal.id,
+                                             issue_type="THIRD_PARTY_NOT_FOUND").count()
+    nc = db.query(ValidationIssue).filter_by(balance_id=bal.id,
+                                             issue_type="THIRD_PARTY_CANCELLED").count()
+    assert nf == 1  # el NIT con DV coincide con RUES; solo la fantasma no existe
+    assert nc == 1  # el CC cancelado se detecta
+
+
 # ---------- API ----------
 
 def test_api_health():

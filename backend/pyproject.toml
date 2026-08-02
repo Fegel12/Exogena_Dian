@@ -1,0 +1,9 @@
+[project]
+name = "portal-exogena-dian"
+version = "0.1.0"
+description = "Portal Exógena DIAN: balance de prueba -> validación -> XML para la DIAN"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
