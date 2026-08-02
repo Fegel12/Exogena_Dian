@@ -9,3 +9,5 @@ frontend/.next/
 __pycache__/
 .pytest_cache/
 *.json
+backend/data/*.db-wal
+backend/data/*.db-shm
