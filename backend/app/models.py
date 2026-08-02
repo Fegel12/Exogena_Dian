@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """Modelos de datos. Todas las tablas de negocio llevan tenant_id (multiusuario)."""
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (Column, Integer, String, Float, Text, DateTime,
                         ForeignKey, Boolean, JSON)
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+
+def _ahora():
+    return datetime.now(timezone.utc)
 
 
 class Tenant(Base):
@@ -14,7 +18,7 @@ class Tenant(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), nullable=False)
     nit = Column(String(20), unique=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_ahora)
 
 
 class User(Base):
@@ -44,7 +48,7 @@ class Balance(Base):
     period = Column(String(10))
     nit_empresa = Column(String(20))
     file_name = Column(String(300))
-    imported_at = Column(DateTime, default=datetime.utcnow)
+    imported_at = Column(DateTime, default=_ahora)
     total_debitos = Column(Float, default=0)
     total_creditos = Column(Float, default=0)
     total_activo = Column(Float, default=0)
@@ -90,7 +94,7 @@ class ValidationIssue(Base):
     amount = Column(Float)
     message = Column(Text)               # qué pasó
     action = Column(Text)                # qué hacer
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_ahora)
 
 
 class ThirdParty(Base):
@@ -141,4 +145,4 @@ class GeneratedFile(Base):
     format_code = Column(String(10))
     file_name = Column(String(300))
     xml_content = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_ahora)

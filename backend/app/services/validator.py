@@ -68,30 +68,31 @@ def validar_balance(balance_id, db, limpiar=True):
                  "Revise los movimientos de ese tercero en la cuenta: puede haber una transacción "
                  "al revés, un saldo mal clasificado o un error de digitación.")
 
-    # 4) Existencia de cuentas en el PUC
-    puc = {p.code for p in db.query(PucAccount).all()}
-    puc6 = {c for c in puc if len(c) == 6}
+    # 4) Existencia de cuentas en el PUC (solo si el catálogo está cargado)
     cuentas = (db.query(BalanceRow).filter_by(balance_id=balance_id, row_type="account").all())
-    for r in cuentas:
-        if r.level == 2 and r.code not in puc:
-            _add(db, balance_id, t, "PUC_MISSING", "error", r.code, r.account_name, None, None,
-                 f"El grupo {r.code} ({r.account_name}) no existe en el PUC oficial.",
-                 "Verifique el código: puede ser un grupo creado internamente o un error de exportación.")
-        elif r.level == 4 and r.code not in puc:
-            _add(db, balance_id, t, "PUC_MISSING", "error", r.code, r.account_name, None, None,
-                 f"La cuenta {r.code} ({r.account_name}) no existe en el PUC oficial.",
-                 "Verifique el código de la cuenta o si usa una tabla de equivalencias.")
-        elif r.level == 6 and r.code not in puc:
-            _add(db, balance_id, t, "PUC_MISSING", "warning", r.code, r.account_name, None, None,
-                 f"La subcuenta {r.code} ({r.account_name}) no está en el PUC oficial "
-                 f"(puede ser una subcuenta interna creada por el programa contable).",
-                 "Si es una subcuenta interna, registre la equivalencia en la parametrización; "
-                 "si no, revise el código.")
-        elif r.level >= 8 and r.code[:6] not in puc6:
-            _add(db, balance_id, t, "PUC_MISSING", "warning", r.code, r.account_name, None, None,
-                 f"La auxiliar {r.code} ({r.account_name}) cuelga de la subcuenta {r.code[:6]}, "
-                 f"que no existe en el PUC oficial.",
-                 "Verifique la subcuenta padre: puede ser un código erróneo.")
+    puc = {p.code for p in db.query(PucAccount).all()}
+    if puc:
+        puc6 = {c for c in puc if len(c) == 6}
+        for r in cuentas:
+            if r.level == 2 and r.code not in puc:
+                _add(db, balance_id, t, "PUC_MISSING", "error", r.code, r.account_name, None, None,
+                     f"El grupo {r.code} ({r.account_name}) no existe en el PUC oficial.",
+                     "Verifique el código: puede ser un grupo creado internamente o un error de exportación.")
+            elif r.level == 4 and r.code not in puc:
+                _add(db, balance_id, t, "PUC_MISSING", "error", r.code, r.account_name, None, None,
+                     f"La cuenta {r.code} ({r.account_name}) no existe en el PUC oficial.",
+                     "Verifique el código de la cuenta o si usa una tabla de equivalencias.")
+            elif r.level == 6 and r.code not in puc:
+                _add(db, balance_id, t, "PUC_MISSING", "warning", r.code, r.account_name, None, None,
+                     f"La subcuenta {r.code} ({r.account_name}) no está en el PUC oficial "
+                     f"(puede ser una subcuenta interna creada por el programa contable).",
+                     "Si es una subcuenta interna, registre la equivalencia en la parametrización; "
+                     "si no, revise el código.")
+            elif r.level >= 8 and r.code[:6] not in puc6:
+                _add(db, balance_id, t, "PUC_MISSING", "warning", r.code, r.account_name, None, None,
+                     f"La auxiliar {r.code} ({r.account_name}) cuelga de la subcuenta {r.code[:6]}, "
+                     f"que no existe en el PUC oficial.",
+                     "Verifique la subcuenta padre: puede ser un código erróneo.")
 
     # 5) Suma de terceros vs saldo de la cuenta
     por_cuenta = {}
@@ -115,7 +116,10 @@ def validar_balance(balance_id, db, limpiar=True):
             n = _norm(r.doc_number)
             if not n or r.doc_type in ("SIN",):
                 continue
-            tp = db.query(ThirdParty).filter(ThirdParty.doc_number.like(f"%{n}%")).first()
+            # búsqueda tolerante al dígito de verificación: exacta y sin el último dígito
+            tp = db.query(ThirdParty).filter_by(doc_number=n).first()
+            if tp is None and len(n) >= 9:
+                tp = db.query(ThirdParty).filter_by(doc_number=n[:-1]).first()
             if tp is None:
                 _add(db, balance_id, t, "THIRD_PARTY_NOT_FOUND", "warning", r.code,
                      r.account_name, r.third_party_name, None,

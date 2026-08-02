@@ -56,6 +56,27 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
+## Documentación
+
+Toda la documentación está en la carpeta **`docs/`** (índice en `docs/00-INDICE.md`):
+arquitectura, base de datos, código explicado módulo por módulo, API, validaciones,
+formatos DIAN, guía de uso e historial del proyecto.
+
+## Cargar los terceros (cámaras de comercio / RUES)
+
+```bash
+cd backend
+.venv/Scripts/python.exe scripts/cargar_terceros.py "C:\ruta\tus_terceros.txt"
+# opción --limpiar para borrar los anteriores
+```
+
+## Probar (suite de pruebas)
+
+```bash
+cd backend
+.venv/Scripts/python.exe -m pytest tests/ -q
+```
+
 ## Pendiente / avisos importantes
 
 - **Catálogo de conceptos**: las reglas de ejemplo del formato 1001 (conceptos 9001-9006) son **REEMPLAZABLES**: el catálogo oficial de la resolución está en las páginas escaneadas del PDF. La parametrización se hace en la tabla `template_rules` o vía plantilla Excel.
