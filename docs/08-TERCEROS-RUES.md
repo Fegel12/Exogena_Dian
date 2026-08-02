@@ -18,9 +18,25 @@ cd C:\Users\egelv\exogena-app\backend
 .venv\Scripts\python.exe scripts/cargar_terceros.py "C:\ruta\terceros.txt" --limpiar
 ```
 
-Con ~3 millones de registros tarda unos minutos (inserta en lotes de 5.000).
+### Carga real realizada (26-ene-2026)
 
-## Qué hace el script
+El archivo real del portal (`Personas_Naturales,_Personas_Jurídicas_y_Entidades_Sin_Animo_de_Lucro_20260126-1.txt`, **3,15 GB**) fue cargado completo:
+
+- **7.919.810 terceros únicos** cargados (1.205.125 duplicados omitidos — el RUES repite el mismo NIT en varias matrículas).
+- La base quedó en **~1,2 GB** y las búsquedas tardan **menos de medio segundo**.
+- Tiempo total de carga: unos 7 minutos.
+
+## Cómo funciona el cargador (a prueba de cambios)
+
+El archivo trae un **encabezado con nombres de columna** (`codigo_camara`, `razon_social`, `numero_identificacion`, `estado_matricula`…). El cargador **mapea las columnas por su nombre**, así que si la DIAN cambia el orden de las columnas en una próxima versión del archivo, el cargador sigue funcionando. Si el archivo no trae encabezado, usa las posiciones conocidas del formato oficial.
+
+Detalles importantes:
+- `numero_identificacion` **no incluye el dígito de verificación** (va en una columna aparte); se guarda sin DV y la validación lo tolera del lado del balance.
+- Los tipos de documento se traducen: "NIT"→NIT, "CEDULA DE CIUDADANIA"→CC, "CEDULA DE EXTRANJERIA"→CE, "PASAPORTE"→PA, "TARJETA DE IDENTIDAD"→TI.
+- Si el mismo número aparece varias veces, se guarda **una sola vez**; si alguna matrícula del mismo número está ACTIVA, se prefiere ese estado.
+- Carga en lotes con modo WAL de SQLite para velocidad.
+
+## Archivo de muestra
 
 `backend/scripts/cargar_terceros.py`:
 1. Lee el TXT línea por línea con el módulo `csv` (maneja comas dentro de comillas).

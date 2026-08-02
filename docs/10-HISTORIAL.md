@@ -44,7 +44,9 @@ Cronología de todo lo realizado (agosto de 2026).
 
 10. **Cargador de terceros RUES** — `scripts/cargar_terceros.py` (probado con muestra de 16 registros) + búsqueda tolerante al dígito de verificación en el validador.
 
-11. **Documentación completa** — carpeta `docs/` (este índice + 10 documentos).
+11. **Carga completa de los terceros reales** (26-ene-2026): archivo de **3,15 GB** del portal datos.gov.co → **7.919.810 terceros únicos** en la base (~1,2 GB). El cargador se hizo **a prueba de cambios** (mapea columnas por nombre del encabezado, con respaldo por posición). Verificación: búsquedas reales de NIT/CC en milisegundos; la validación del balance ahora consulta contra la base completa.
+
+12. **Documentación completa** — carpeta `docs/` (este índice + 10 documentos).
 
 ## Pendiente (próximas fases)
 
