@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { API, apiGet, apiPost } from "@/lib/api";
 
 export default function Generar() {
@@ -12,22 +11,30 @@ export default function Generar() {
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
   const [cargandoExcel, setCargandoExcel] = useState(false);
+
   async function cargarArchivos() {
     try {
       setArchivos(await apiGet(`/api/companies/${empresa}/files`));
-    } catch { /* sin archivos todavía */ }
+    } catch {
+      /* sin archivos todavía */
+    }
   }
 
   useEffect(() => {
     apiGet("/api/companies").then(setEmpresas).catch(() => {});
   }, []);
 
-  useEffect(() => { cargarArchivos(); /* eslint-disable-next-line */ }, [empresa]);
+  useEffect(() => {
+    cargarArchivos();
+  }, [empresa]);
 
   async function exportarExcel() {
-    setError(""); setCargandoExcel(true);
+    setError("");
+    setCargandoExcel(true);
     try {
-      const res = await fetch(`${API}/api/companies/${empresa}/export-excel?formato=1001`, { method: "POST" });
+      const res = await fetch(`${API}/api/companies/${empresa}/export-excel?formato=1001`, {
+        method: "POST",
+      });
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -38,11 +45,15 @@ export default function Generar() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       setError(String(err));
-    } finally { setCargandoExcel(false); }
+    } finally {
+      setCargandoExcel(false);
+    }
   }
 
   async function generar() {
-    setError(""); setCargando(true); setResultado(null);
+    setError("");
+    setCargando(true);
+    setResultado(null);
     try {
       const r = await apiPost(`/api/companies/${empresa}/generate?formato=1001`, {});
       setResultado(r);
@@ -55,76 +66,118 @@ export default function Generar() {
   }
 
   return (
-    <main style={{ maxWidth: 800, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, sans-serif" }}>
-      <p><Link href="/">← Inicio</Link></p>
-      <h1>📄 Generar archivos para la DIAN</h1>
-      <p style={{ color: "#666" }}>
-        Genera el XML del <b>formato 1001</b> (Pagos o Abonos en Cuenta y Retenciones practicadas,
-        Versión 11) según la estructura del anexo de la resolución.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">📄 Generar archivos para la DIAN</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Genera el XML del <b>formato 1001</b> (Pagos o Abonos en Cuenta y Retenciones practicadas,
+          Versión 11) según la estructura del anexo de la resolución.
+        </p>
+      </div>
 
-      <div style={{ display: "flex", gap: ".8rem", alignItems: "center", margin: "1rem 0", flexWrap: "wrap" }}>
-        <select value={empresa} onChange={(e) => setEmpresa(e.target.value)}
-          style={{ padding: ".6rem", borderRadius: 8, border: "1px solid #ccc" }}>
-          {empresas.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-sm">
+        <select
+          value={empresa}
+          onChange={(e) => setEmpresa(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        >
+          {empresas.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
         </select>
-        <button onClick={generar} disabled={cargando}
-          style={{ padding: ".6rem 1.4rem", borderRadius: 8, border: 0, background: "#188038", color: "#fff", cursor: "pointer" }}>
+
+        <button
+          onClick={generar}
+          disabled={cargando}
+          className="rounded-lg bg-green-700 px-5 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:opacity-50"
+        >
           {cargando ? "Generando…" : "Generar formato 1001"}
+        </button>
+
+        <button
+          onClick={exportarExcel}
+          disabled={cargandoExcel || archivos.length === 0}
+          className="rounded-lg border border-green-600 bg-white px-4 py-2 text-sm font-medium text-green-700 transition hover:bg-green-50 disabled:opacity-50"
+        >
+          {cargandoExcel ? "Generando Excel…" : "📥 Exportar Excel"}
         </button>
       </div>
 
-      {error && <p style={{ background: "#fdecea", padding: ".8rem", borderRadius: 8, color: "#b3261e" }}>{error}</p>}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
 
       {resultado && (
-        <div style={{ background: "#e6f4ea", border: "1px solid #34a853", borderRadius: 10, padding: "1rem", marginBottom: "1rem" }}>
-          <h3 style={{ margin: "0 0 .5rem" }}>✅ Archivos generados</h3>
-          {resultado.archivos.map((a) => (
-            <p key={a.file_name} style={{ margin: ".2rem 0" }}>
-              <b>{a.file_name}</b> · {a.registros} registros · total {a.valor_total.toLocaleString("es-CO")}
-            </p>
-          ))}
-          <p style={{ margin: ".6rem 0 0", color: "#666", fontSize: ".85rem" }}>
-            Recuerde: las reglas usan conceptos de ejemplo (9001-9006); reemplácelas por el
-            catálogo oficial de la resolución en la parametrización.
-          </p>
-          <div style={{ marginTop: ".8rem" }}>
-            <button onClick={exportarExcel} disabled={cargandoExcel}
-              style={{ padding: ".6rem 1.4rem", borderRadius: 8, border: 0,
-                       background: "#34a853", color: "#fff", cursor: "pointer" }}>
-              {cargandoExcel ? "Generando Excel…" : "📥 Exportar a Excel"}
-            </button>
+        <div className="rounded-xl border border-green-300 bg-green-50 p-5">
+          <h3 className="text-lg font-semibold text-green-800">✅ Archivos generados</h3>
+          <div className="mt-2 space-y-1">
+            {resultado.archivos.map((a) => (
+              <div key={a.file_name} className="flex items-center gap-3 text-sm">
+                <span className="font-mono font-medium">{a.file_name}</span>
+                <span className="text-gray-500">·</span>
+                <span>{a.registros} registros</span>
+                <span className="text-gray-500">·</span>
+                <span className="font-semibold">
+                  {a.valor_total.toLocaleString("es-CO")} COP
+                </span>
+              </div>
+            ))}
           </div>
+          <p className="mt-3 text-xs text-gray-500">
+            Las reglas usan conceptos de ejemplo (9001-9006); reemplázalas por el catálogo oficial
+            de la resolución en la parametrización.
+          </p>
         </div>
       )}
 
-      <h2 style={{ fontSize: "1.1rem" }}>Archivos generados antes</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".9rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
-            <th style={{ padding: ".4rem" }}>Archivo</th>
-            <th style={{ padding: ".4rem" }}>Formato</th>
-            <th style={{ padding: ".4rem" }}>Fecha</th>
-            <th style={{ padding: ".4rem" }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {archivos.map((f) => (
-            <tr key={f.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: ".4rem" }}>{f.file_name}</td>
-              <td style={{ padding: ".4rem" }}>{f.format_code}</td>
-              <td style={{ padding: ".4rem" }}>{f.created_at}</td>
-              <td style={{ padding: ".4rem" }}>
-                <a href={`${API}/api/files/${f.id}/download`} target="_blank" rel="noreferrer"
-                  style={{ color: "#1a73e8" }}>⬇ Descargar</a>
-              </td>
-            </tr>
-          ))}
-          {archivos.length === 0 && (
-            <tr><td colSpan={4} style={{ padding: "1rem", color: "#888" }}>No hay archivos generados todavía.</td></tr>
-          )}
-        </tbody>
-      </table>
-    </main>
+      {/* Archivos generados antes */}
+      <div>
+        <h2 className="text-lg font-semibold">Archivos generados antes</h2>
+        <div className="mt-2 overflow-x-auto rounded-xl border bg-white shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-gray-50 text-left">
+              <tr>
+                <th className="px-4 py-3 font-medium">Archivo</th>
+                <th className="px-4 py-3 font-medium">Formato</th>
+                <th className="px-4 py-3 font-medium">Fecha</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {archivos.map((f) => (
+                <tr key={f.id} className="border-b last:border-0 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 font-mono text-xs">{f.file_name}</td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      {f.format_code}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{f.created_at}</td>
+                  <td className="px-4 py-3">
+                    <a
+                      href={`${API}/api/files/${f.id}/download`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                    >
+                      ⬇ Descargar
+                    </a>
+                  </td>
+                </tr>
+              ))}
+              {archivos.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                    No hay archivos generados todavía.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }

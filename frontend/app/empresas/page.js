@@ -29,47 +29,83 @@ export default function Empresas() {
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, sans-serif" }}>
-      <p><Link href="/">← Inicio</Link></p>
-      <h1>🏢 Empresas</h1>
-      <p style={{ color: "#666" }}>Vista de <b>superusuario</b>: todas las empresas del portal.</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">🏢 Empresas</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Vista de <b>superusuario</b>: todas las empresas del portal.
+        </p>
+      </div>
 
-      {error && <p style={{ background: "#fdecea", padding: ".8rem", borderRadius: 8, color: "#b3261e" }}>{error}</p>}
-      {ok && <p style={{ background: "#e6f4ea", padding: ".8rem", borderRadius: 8, color: "#1e7e34" }}>{ok}</p>}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+      {ok && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{ok}</div>
+      )}
 
-      <form onSubmit={crear} style={{ display: "flex", gap: ".5rem", margin: "1rem 0", flexWrap: "wrap" }}>
-        <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre de la empresa" required
-          style={{ padding: ".6rem", borderRadius: 8, border: "1px solid #ccc", flex: 2, minWidth: 220 }} />
-        <input value={nit} onChange={(e) => setNit(e.target.value)} placeholder="NIT"
-          style={{ padding: ".6rem", borderRadius: 8, border: "1px solid #ccc", flex: 1, minWidth: 140 }} />
-        <button type="submit" style={{ padding: ".6rem 1.2rem", borderRadius: 8, border: 0, background: "#1a73e8", color: "#fff", cursor: "pointer" }}>Crear</button>
+      <form onSubmit={crear} className="flex flex-wrap gap-3 rounded-xl border bg-white p-4 shadow-sm">
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre de la empresa"
+          required
+          className="min-w-[220px] flex-[2] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <input
+          value={nit}
+          onChange={(e) => setNit(e.target.value)}
+          placeholder="NIT (ej. 900.123.456-7)"
+          className="min-w-[160px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+        >
+          + Crear empresa
+        </button>
       </form>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
-            <th style={{ padding: ".5rem" }}>#</th>
-            <th style={{ padding: ".5rem" }}>Nombre</th>
-            <th style={{ padding: ".5rem" }}>NIT</th>
-            <th style={{ padding: ".5rem" }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {empresas.map((e) => (
-            <tr key={e.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: ".5rem" }}>{e.id}</td>
-              <td style={{ padding: ".5rem" }}>{e.name}</td>
-              <td style={{ padding: ".5rem" }}>{e.nit || "—"}</td>
-              <td style={{ padding: ".5rem" }}>
-                <Link href={`/dashboard?empresa=${e.id}`} style={{ color: "#1a73e8" }}>Ver dashboard →</Link>
-              </td>
+      <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="border-b bg-gray-50 text-left">
+            <tr>
+              <th className="px-4 py-3 font-medium">#</th>
+              <th className="px-4 py-3 font-medium">Nombre</th>
+              <th className="px-4 py-3 font-medium">NIT</th>
+              <th className="px-4 py-3 font-medium">Balances</th>
+              <th className="px-4 py-3"></th>
             </tr>
-          ))}
-          {empresas.length === 0 && (
-            <tr><td colSpan={4} style={{ padding: "1rem", color: "#888" }}>No hay empresas todavía.</td></tr>
-          )}
-        </tbody>
-      </table>
-    </main>
+          </thead>
+          <tbody>
+            {empresas.map((e) => (
+              <tr key={e.id} className="border-b last:border-0 hover:bg-gray-50/50">
+                <td className="px-4 py-3 font-mono text-xs text-gray-500">{e.id}</td>
+                <td className="px-4 py-3 font-medium">{e.name}</td>
+                <td className="px-4 py-3 font-mono text-xs">{e.nit || "—"}</td>
+                <td className="px-4 py-3 text-xs text-gray-500">
+                  {e.balance_count != null ? `${e.balance_count} balance(s)` : "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <Link
+                    href={`/dashboard?empresa=${e.id}`}
+                    className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                  >
+                    Ver dashboard →
+                  </Link>
+                </td>
+              </tr>
+            ))}
+            {empresas.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  No hay empresas todavía. Crea la primera arriba ↑
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

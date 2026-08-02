@@ -19,8 +19,13 @@ export default function Subir() {
 
   async function subir(e) {
     e.preventDefault();
-    if (!archivo) { setError("Seleccione un archivo Excel (.xlsx)."); return; }
-    setError(""); setCargando(true); setResultado(null);
+    if (!archivo) {
+      setError("Seleccione un archivo Excel (.xlsx).");
+      return;
+    }
+    setError("");
+    setCargando(true);
+    setResultado(null);
     try {
       const r = await apiUpload(`/api/companies/${empresa}/balances`, archivo);
       setResultado(r);
@@ -34,41 +39,79 @@ export default function Subir() {
   }
 
   return (
-    <main style={{ maxWidth: 800, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui, sans-serif" }}>
-      <p><Link href="/">← Inicio</Link></p>
-      <h1>📤 Subir balance de prueba</h1>
-      <p style={{ color: "#666" }}>
-        Archivo exportado por WorldOffice (balance de prueba <b>con terceros</b>). El sistema detecta
-        la estructura, importa y valida automáticamente.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">📤 Subir balance de prueba</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Archivo exportado por WorldOffice (balance de prueba <b>con terceros</b>).
+          El sistema detecta la estructura, importa y valida automáticamente.
+        </p>
+      </div>
 
-      {error && <p style={{ background: "#fdecea", padding: ".8rem", borderRadius: 8, color: "#b3261e" }}>{error}</p>}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
 
-      <form onSubmit={subir} style={{ display: "flex", gap: ".8rem", flexWrap: "wrap", alignItems: "center", margin: "1rem 0" }}>
-        <select value={empresa} onChange={(e) => setEmpresa(e.target.value)}
-          style={{ padding: ".6rem", borderRadius: 8, border: "1px solid #ccc" }}>
-          {empresas.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+      <form
+        onSubmit={subir}
+        className="flex flex-wrap items-center gap-3 rounded-xl border bg-white p-5 shadow-sm"
+      >
+        <select
+          value={empresa}
+          onChange={(e) => setEmpresa(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        >
+          {empresas.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
         </select>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls" onChange={(e) => setArchivo(e.target.files[0])}
-          style={{ padding: ".4rem" }} />
-        <button type="submit" disabled={cargando}
-          style={{ padding: ".6rem 1.4rem", borderRadius: 8, border: 0, background: "#1a73e8", color: "#fff", cursor: "pointer" }}>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={(e) => setArchivo(e.target.files[0])}
+          className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100"
+        />
+
+        <button
+          type="submit"
+          disabled={cargando}
+          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+        >
           {cargando ? "Importando…" : "Importar y validar"}
         </button>
       </form>
 
       {resultado && (
-        <div style={{ background: "#e6f4ea", border: "1px solid #34a853", borderRadius: 10, padding: "1rem" }}>
-          <h3 style={{ margin: "0 0 .5rem" }}>✅ Balance importado (id {resultado.balance_id}, periodo {resultado.period})</h3>
-          <p style={{ margin: 0 }}>
-            Validación: <b>{resultado.validacion.total}</b> incidencias
-            (<b>{resultado.validacion.errores}</b> errores, <b>{resultado.validacion.advertencias}</b> advertencias).
+        <div className="rounded-xl border border-green-300 bg-green-50 p-5">
+          <h3 className="text-lg font-semibold text-green-800">
+            ✅ Balance importado (id {resultado.balance_id}, periodo {resultado.period})
+          </h3>
+          <p className="mt-1 text-sm text-green-700">
+            Validación: <b>{resultado.validacion.total}</b> incidencias (
+            <b>{resultado.validacion.errores}</b> errores,{" "}
+            <b>{resultado.validacion.advertencias}</b> advertencias).
           </p>
-          <p style={{ margin: ".5rem 0 0" }}>
-            <Link href={`/dashboard?empresa=${empresa}`} style={{ color: "#1a73e8" }}>Ver el dashboard →</Link>
+          <Link
+            href={`/dashboard?empresa=${empresa}`}
+            className="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
+          >
+            Ver el dashboard →
+          </Link>
+        </div>
+      )}
+
+      {!resultado && !error && (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+          <p className="text-gray-400">Selecciona un archivo Excel (.xlsx) para empezar</p>
+          <p className="mt-1 text-xs text-gray-300">
+            El balance debe tener la estructura de WorldOffice: código, nombre tercero, saldos, débitos, créditos
           </p>
         </div>
       )}
-    </main>
+    </div>
   );
 }

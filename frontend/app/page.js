@@ -1,30 +1,62 @@
 import Link from "next/link";
 
+const tarjetas = [
+  {
+    href: "/empresas",
+    titulo: "🏢 Empresas",
+    texto: "Superusuario: crea y administra las empresas.",
+    color: "border-l-blue-500",
+  },
+  {
+    href: "/dashboard",
+    titulo: "📊 Dashboard",
+    texto: "Balance, cuadre y cuentas que no cumplen su naturaleza.",
+    color: "border-l-green-500",
+  },
+  {
+    href: "/subir",
+    titulo: "📤 Subir balance",
+    texto: "Importa el balance de prueba de WorldOffice.",
+    color: "border-l-amber-500",
+  },
+  {
+    href: "/generar",
+    titulo: "📄 Generar XML",
+    texto: "Crea los archivos para la DIAN (formato 1001).",
+    color: "border-l-purple-500",
+  },
+];
+
 export default function Home() {
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: "3rem 1rem", fontFamily: "system-ui, sans-serif" }}>
-      <h1>🇨🇴 Portal Exógena DIAN</h1>
-      <p style={{ fontSize: "1.1rem", color: "#444" }}>
-        Sube el balance de prueba con terceros, valida la contabilidad y genera los archivos XML
-        para la información exógena.
-      </p>
-      <div style={{ display: "grid", gap: "1rem", marginTop: "2rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-        <Tarjeta href="/empresas" titulo="🏢 Empresas" texto="Superusuario: crea y administra las empresas." />
-        <Tarjeta href="/dashboard" titulo="📊 Dashboard" texto="Balance, cuadre y cuentas que no cumplen su naturaleza." />
-        <Tarjeta href="/subir" titulo="📤 Subir balance" texto="Importa el balance de prueba de WorldOffice." />
-        <Tarjeta href="/generar" titulo="📄 Generar XML" texto="Crea los archivos para la DIAN (formato 1001)." />
+    <div className="space-y-8">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+          🇨🇴 Portal Exógena DIAN
+        </h1>
+        <p className="mx-auto mt-3 max-w-xl text-gray-500">
+          Sube el balance de prueba con terceros, valida la contabilidad y genera los archivos
+          XML para la información exógena.
+        </p>
       </div>
-    </main>
-  );
-}
 
-function Tarjeta({ href, titulo, texto }) {
-  return (
-    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
-      <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: "1.2rem", height: "100%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.08)" }}>
-        <h3 style={{ margin: "0 0 .5rem" }}>{titulo}</h3>
-        <p style={{ margin: 0, color: "#555", fontSize: ".95rem" }}>{texto}</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {tarjetas.map(({ href, titulo, texto, color }) => (
+          <Link key={href} href={href} className="group">
+            <div
+              className={`h-full rounded-xl border border-gray-200 border-l-4 bg-white p-6 shadow-sm transition group-hover:shadow-md ${color}`}
+            >
+              <h2 className="text-lg font-semibold text-gray-900">{titulo}</h2>
+              <p className="mt-1 text-sm text-gray-500">{texto}</p>
+            </div>
+          </Link>
+        ))}
       </div>
-    </Link>
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-center text-sm text-blue-700">
+        💡 <b>Tip:</b> Empieza creando una empresa en <b>Empresas</b>, luego sube su balance en{" "}
+        <b>Subir balance</b> y revisa las incidencias en el <b>Dashboard</b>.
+      </div>
+    </div>
   );
 }
