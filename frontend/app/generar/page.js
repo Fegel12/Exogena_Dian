@@ -11,7 +11,7 @@ export default function Generar() {
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
-
+  const [cargandoExcel, setCargandoExcel] = useState(false);
   async function cargarArchivos() {
     try {
       setArchivos(await apiGet(`/api/companies/${empresa}/files`));
@@ -23,6 +23,23 @@ export default function Generar() {
   }, []);
 
   useEffect(() => { cargarArchivos(); /* eslint-disable-next-line */ }, [empresa]);
+
+  async function exportarExcel() {
+    setError(""); setCargandoExcel(true);
+    try {
+      const res = await fetch(`${API}/api/companies/${empresa}/export-excel?formato=1001`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Formato_1001_v11.xlsx";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(String(err));
+    } finally { setCargandoExcel(false); }
+  }
 
   async function generar() {
     setError(""); setCargando(true); setResultado(null);
@@ -71,6 +88,13 @@ export default function Generar() {
             Recuerde: las reglas usan conceptos de ejemplo (9001-9006); reemplácelas por el
             catálogo oficial de la resolución en la parametrización.
           </p>
+          <div style={{ marginTop: ".8rem" }}>
+            <button onClick={exportarExcel} disabled={cargandoExcel}
+              style={{ padding: ".6rem 1.4rem", borderRadius: 8, border: 0,
+                       background: "#34a853", color: "#fff", cursor: "pointer" }}>
+              {cargandoExcel ? "Generando Excel…" : "📥 Exportar a Excel"}
+            </button>
+          </div>
         </div>
       )}
 

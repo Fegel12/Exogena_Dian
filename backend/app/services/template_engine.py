@@ -56,6 +56,139 @@ def _dividir_nombre_persona(nombre):
     return apl1, apl2, nom1, nom2
 
 
+def exportar_excel(balance_id, format_code, db):
+    """Genera un Excel del formato 1001 (mismos datos que el XML) para revisión."""
+    if format_code != "1001":
+        raise ValueError(f"Exportación a Excel solo disponible para el formato 1001 por ahora.")
+
+    bal = db.get(Balance, balance_id)
+    formato = FORMATO_1001
+
+    reglas = db.query(TemplateRule).filter_by(format_code=format_code).all()
+    if not reglas:
+        raise ValueError("No hay reglas de parametrización para el formato 1001.")
+
+    terceros = (db.query(BalanceRow)
+                .filter_by(balance_id=balance_id, row_type="thirdparty")
+                .order_by(BalanceRow.code).all())
+
+    # --- construir registros (idéntico a generar_formato) ---
+    registros = []
+    for regla in reglas:
+        doc_types = [d.strip() for d in (regla.doc_types or "").split(",") if d.strip()]
+        for r in terceros:
+            if r.code < regla.cuentas_desde or r.code > regla.cuentas_hasta:
+                continue
+            if doc_types and r.doc_type and r.doc_type not in doc_types:
+                continue
+            valor = {"closing": r.closing, "debits": r.debits, "credits": r.credits}.get(
+                regla.campo_valor or "closing", r.closing)
+            if abs(valor or 0) < 0.005:
+                continue
+            tdoc = TDOC.get(r.doc_type or "", "")
+            nid = "".join(ch for ch in (r.doc_number or "") if ch.isdigit())[:20]
+            if r.doc_type in ("CC", "CE", "TI", "PA"):
+                apl1, apl2, nom1, nom2 = _dividir_nombre_persona(r.third_party_name)
+                raz = ""
+            else:
+                apl1 = apl2 = nom1 = nom2 = ""
+                raz = (r.third_party_name or "")[:450]
+            registros.append({
+                "cpt": regla.concepto, "tdoc": tdoc, "nid": nid,
+                "apl1": apl1, "apl2": apl2, "nom1": nom1, "nom2": nom2, "raz": raz,
+                "campo": regla.campo_valor or "pago", "valor": abs(valor),
+            })
+
+    # agrupar por llave única sumando valores
+    agrupados = {}
+    for rec in registros:
+        llave = (rec["cpt"], rec["tdoc"], rec["nid"])
+        g = agrupados.setdefault(llave, {**rec, "valores": {}})
+        g["valores"][rec["campo"]] = g["valores"].get(rec["campo"], 0) + rec["valor"]
+    lista = list(agrupados.values())
+
+    # --- armar el Excel ---
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Formato {format_code}"
+
+    ENCABEZADOS = [
+        "Concepto", "Tipo Doc", "Número ID", "1er Apellido", "2do Apellido",
+        "1er Nombre", "2do Nombre", "Razón Social", "Dirección", "Depto",
+        "Municipio", "País", "Pago Deducible", "Pago No Deducible",
+        "IVA Deducible", "IVA No Deducible", "Retención Renta",
+        "Retención Asumida", "ReteIVA", "ReteIVA No Residentes",
+    ]
+    header_fill = PatternFill(start_color="1A73E8", end_color="1A73E8", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=11)
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"))
+    header_align = Alignment(horizontal="center", vertical="center")
+
+    for col, name in enumerate(ENCABEZADOS, 1):
+        cell = ws.cell(row=1, column=col, value=name)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+        cell.border = thin_border
+
+    for row_idx, rec in enumerate(lista, 2):
+        vals = rec["valores"]
+        row = [
+            rec["cpt"], rec["tdoc"], rec["nid"],
+            rec["apl1"], rec["apl2"], rec["nom1"], rec["nom2"],
+            rec["raz"], "", "", "", PAIS_COLOMBIA,
+            vals.get("pago", 0), vals.get("pnded", 0),
+            vals.get("ided", 0), vals.get("inded", 0),
+            vals.get("retp", 0), vals.get("reta", 0),
+            vals.get("comun", 0), vals.get("ndom", 0),
+        ]
+        for col, val in enumerate(row, 1):
+            cell = ws.cell(row=row_idx, column=col, value=val)
+            cell.border = thin_border
+            if isinstance(val, (int, float)):
+                cell.number_format = "#,##0"
+
+    # ancho de columnas
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["C"].width = 16
+    ws.column_dimensions["H"].width = 42
+    for col_letter in "MNOPQRS":
+        ws.column_dimensions[col_letter].width = 14
+
+    # hoja resumen
+    ws2 = wb.create_sheet("Resumen")
+    info = [
+        ("Formato", formato["name"]),
+        ("Versión", formato["version"]),
+        ("Periodo", bal.period),
+        ("NIT empresa", bal.nit_empresa or ""),
+        ("Fecha generación", bal.imported_at.strftime("%Y-%m-%d %H:%M") if bal.imported_at else ""),
+        ("Total registros", len(lista)),
+        ("Valor total (pago)", sum(v.get("pago", 0) for v in [r["valores"] for r in lista])),
+        ("Valor total (retención renta)", sum(v.get("retp", 0) for v in [r["valores"] for r in lista])),
+    ]
+    for row_idx, (nombre, valor) in enumerate(info, 1):
+        ws2.cell(row=row_idx, column=1, value=nombre).font = Font(bold=True)
+        c = ws2.cell(row=row_idx, column=2, value=valor)
+        if isinstance(valor, (int, float)):
+            c.number_format = "#,##0"
+    ws2.column_dimensions["A"].width = 30
+    ws2.column_dimensions["B"].width = 20
+
+    # guardar a bytes
+    from io import BytesIO
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    nombre = f"Formato_{format_code}_v{formato['version']}_{bal.period}.xlsx"
+    return buf.getvalue(), nombre
+
+
 def generar_formato(balance_id, format_code, db):
     bal = db.get(Balance, balance_id)
     if format_code != "1001":
