@@ -10,8 +10,14 @@ router = APIRouter(prefix="/api/companies", tags=["empresas"])
 
 @router.get("")
 def listar_companies(db: Session = Depends(get_db)):
-    return [{"id": t.id, "name": t.name, "nit": t.nit}
-            for t in db.query(Tenant).order_by(Tenant.id).all()]
+    tenants = db.query(Tenant).order_by(Tenant.id).all()
+    return [
+        {
+            "id": t.id, "name": t.name, "nit": t.nit,
+            "balance_count": db.query(Balance).filter_by(tenant_id=t.id).count(),
+        }
+        for t in tenants
+    ]
 
 
 @router.post("")
