@@ -119,10 +119,10 @@ def test_carga_terceros_muestra(tmp_path, monkeypatch):
     B.metadata.create_all(engine)
     monkeypatch.setattr(db_mod, "SessionLocal", sessionmaker(bind=engine))
 
-    from cargar_terceros import cargar_terceros
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                     "scripts"))
+    from cargar_terceros import cargar_terceros
     muestra = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "data", "terceros_muestra.txt")
     total, duplicados = cargar_terceros(muestra)
