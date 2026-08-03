@@ -196,17 +196,17 @@ export default function Parametrizar() {
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
             />
             <select
-              size={6}
               value={form.concepto}
               onChange={e => seleccionarConcepto(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 text-sm text-gray-900">
-              <option value="">— Selecciona —</option>
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900">
+              <option value="">{conceptos.length === 0 ? "Cargando..." : "— Selecciona —"}</option>
               {conceptosFiltrados.map(c => (
                 <option key={c.codigo} value={c.codigo}>
                   {c.codigo} — {c.nombre}
                 </option>
               ))}
             </select>
+            <p className="text-[10px] text-gray-400 mt-0.5">{conceptos.length} conceptos cargados</p>
           </div>
 
           {/* Campo valor */}
@@ -231,20 +231,20 @@ export default function Parametrizar() {
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
             />
             <select
-              size={6}
               value={form.cuentas_desde}
               onChange={e => {
                 const c = cuentas.find(x => x.codigo === e.target.value);
                 setForm({...form, cuentas_desde: e.target.value, cuentas_hasta: e.target.value});
               }}
-              className="mt-1 w-full rounded-lg border border-gray-300 text-sm text-gray-900">
-              <option value="">— Selecciona —</option>
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900">
+              <option value="">{cuentas.length === 0 ? "Cargando..." : "— Selecciona —"}</option>
               {cuentasFiltradas.map(c => (
                 <option key={c.codigo} value={c.codigo}>
                   {c.codigo} — {c.nombre}
                 </option>
               ))}
             </select>
+            <p className="text-[10px] text-gray-400 mt-0.5">{cuentas.length} cuentas del balance</p>
           </div>
 
           <button onClick={crear}
