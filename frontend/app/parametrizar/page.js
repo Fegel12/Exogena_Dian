@@ -11,12 +11,16 @@ export default function Parametrizar() {
   const [cuentasBalance, setCuentasBalance] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
 
   function cargar() {
+    setLoading(true);
     Promise.all([
       fetch(`${API}/api/template-rules?formato=${formato}`).then(r=>r.json()),
       fetch(`${API}/api/cuentas-balance?tenant_id=1`).then(r=>r.json()),
-    ]).then(([c,cu]) => { setConceptos(c); setCuentasBalance(cu); });
+    ]).then(([c,cu]) => { setConceptos(c); setCuentasBalance(cu); })
+      .catch(e => setMsg("Error al cargar: " + e.message))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { cargar(); }, [formato]);
@@ -161,6 +165,12 @@ export default function Parametrizar() {
                 </tr>
               );
             })}
+            {loading && (
+              <tr><td colSpan={2} className="py-10 text-center text-gray-400">⏳ Cargando conceptos...</td></tr>
+            )}
+            {!loading && conceptos.length === 0 && (
+              <tr><td colSpan={2} className="py-10 text-center text-gray-400">Sin conceptos para este formato. Usa Auto-propuesta o Importar.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
