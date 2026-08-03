@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API = "http://127.0.0.1:8000";
+const FORMATOS = ["1001","1005","1647","2821","2822","2854","1476","2574"];
 
 export default function TablaParametrizar({ initialConceptos, initialCuentas }) {
+  const [formato, setFormato] = useState("1001");
   const [conceptos, setConceptos] = useState(initialConceptos);
   const [cuentas, setCuentas] = useState(initialCuentas);
   const [expanded, setExpanded] = useState(null);
   const [msg, setMsg] = useState("");
 
-  async function cargar() {
+  async function cargar(fmt) {
+    const f = fmt || formato;
     try {
       const [r, c] = await Promise.all([
-        fetch(`${API}/api/template-rules?formato=1001&tenant_id=1`).then(r => r.json()),
+        fetch(`${API}/api/template-rules?formato=${f}&tenant_id=1`).then(r => r.json()),
         fetch(`${API}/api/cuentas-balance?tenant_id=1`).then(r => r.json()),
       ]);
       setConceptos(Array.isArray(r) ? r : []);
@@ -21,175 +24,173 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
     } catch (e) { setMsg("Error: " + e.message); }
   }
 
+  function cambiarFormato(f) {
+    setFormato(f);
+    setExpanded(null);
+    cargar(f);
+  }
+
   async function toggle(ruleId, currentActive) {
     await fetch(`${API}/api/template-rules/${ruleId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ active: !currentActive }),
     });
-    await cargar();
+    cargar();
   }
 
   async function addAccount(concepto, nombre, cuenta) {
     await fetch(`${API}/api/template-rules`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format_code: "1001", concepto: parseInt(concepto), concepto_nombre: nombre, cuenta, campo_valor: "closing" }),
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ format_code: formato, concepto: parseInt(concepto), concepto_nombre: nombre, cuenta, campo_valor: "closing" }),
     });
-    await cargar();
+    cargar();
   }
 
   async function removeAccount(ruleId) {
     await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" });
-    await cargar();
+    cargar();
   }
 
   async function autoPropuesta() {
-    setMsg("Generando...");
-    const r = await fetch(`${API}/api/template-rules/auto-propose?tenant_id=1&formato=1001`, { method: "POST" });
+    setMsg("Generando propuesta...");
+    const r = await fetch(`${API}/api/template-rules/auto-propose?tenant_id=1&formato=${formato}`, { method: "POST" });
     const d = await r.json();
-    setMsg(`Propuesta generada: ${d.creados || 0} cuentas`);
-    await cargar();
-    setTimeout(() => setMsg(""), 3000);
-  }
-
-  async function handleImport(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setMsg("Importando...");
-    const fd = new FormData(); fd.append("file", f);
-    const r = await fetch(`${API}/api/template-rules/import?formato=1001`, { method: "POST", body: fd });
-    const d = await r.json();
-    setMsg(`Importado: ${d.creados || 0} nuevas, ${d.actualizados || 0} actualizadas`);
-    await cargar();
+    setMsg(`Creadas: ${d.creados || 0} asignaciones`);
+    cargar();
     setTimeout(() => setMsg(""), 3000);
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111" }}>Parametrizacion DIAN → PUC</h2>
-        <div style={{ display: "flex", gap: 8, fontSize: 14 }}>
-          <a href={`${API}/api/template-rules/export?formato=1001&fmt=xlsx`}
-             style={{ padding: "6px 14px", border: "1px solid #ccc", borderRadius: 6, color: "#333", textDecoration: "none" }}>
-            Exportar
-          </a>
-          <label style={{ padding: "6px 14px", border: "1px solid #ccc", borderRadius: 6, color: "#333", cursor: "pointer" }}>
+    <div className="space-y-3">
+      {/* Formato selector + Acciones */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1">
+          {FORMATOS.map(f => (
+            <button key={f} onClick={() => cambiarFormato(f)}
+              className={`rounded px-3 py-1 text-sm font-medium ${
+                formato === f ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}>{f}</button>
+          ))}
+        </div>
+        <div className="flex gap-2 text-sm">
+          <a href={`${API}/api/template-rules/export?formato=${formato}&fmt=xlsx`}
+             className="rounded border px-3 py-1.5 text-gray-600 hover:bg-gray-50 no-underline">Exportar</a>
+          <label className="cursor-pointer rounded border px-3 py-1.5 text-gray-600 hover:bg-gray-50">
             Importar
-            <input type="file" accept=".csv,.txt,.xlsx,.xls" hidden onChange={handleImport} />
+            <input type="file" accept=".csv,.txt,.xlsx,.xls" hidden
+              onChange={async e => {
+                const f = e.target.files?.[0]; if (!f) return;
+                setMsg("Importando...");
+                const fd = new FormData(); fd.append("file", f);
+                const r = await fetch(`${API}/api/template-rules/import?formato=${formato}`, { method: "POST", body: fd });
+                const d = await r.json();
+                setMsg(`Importado: ${d.creados || 0} nuevas`);
+                cargar();
+                setTimeout(() => setMsg(""), 3000);
+              }} />
           </label>
           <button onClick={autoPropuesta}
-            style={{ padding: "6px 14px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>
+            className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700">
             Auto-propuesta
           </button>
         </div>
       </div>
 
       {msg && (
-        <div style={{ padding: "6px 12px", marginBottom: 8, background: "#dbeafe", color: "#1e40af", borderRadius: 6, fontSize: 13, border: "1px solid #bfdbfe" }}>
-          {msg}
-        </div>
+        <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{msg}</div>
       )}
 
-      {/* Table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+      {/* TABLA */}
+      <table className="w-full border-collapse border border-gray-200 rounded-lg overflow-hidden">
         <thead>
-          <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-            <th style={{ padding: "10px 14px", textAlign: "left", width: 150, fontWeight: 600, fontSize: 13, color: "#374151" }}>
-              Concepto DIAN
-            </th>
-            <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, fontSize: 13, color: "#374151" }}>
-              Cuentas PUC de ESTA empresa
-            </th>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700 w-[150px]">Concepto DIAN</th>
+            <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700">Cuentas PUC de ESTA empresa</th>
           </tr>
         </thead>
         <tbody>
-          {conceptos.map(c => {
-            const isOpen = expanded === c.concepto;
-            const activas = (c.cuentas || []).filter(a => a.active);
-            const inactivas = (c.cuentas || []).filter(a => !a.active);
-            const asignadas = new Set((c.cuentas || []).map(a => a.cuenta));
-            const disponibles = cuentas.filter(ct => !asignadas.has(ct.codigo) && ct.codigo.length >= 2);
+          {conceptos.length === 0 ? (
+            <tr><td colSpan={2} className="py-10 text-center text-gray-400">
+              Sin conceptos. Usa <b>Auto-propuesta</b> o <b>Importar</b> para cargar.
+            </td></tr>
+          ) : (
+            conceptos.map(c => {
+              const isOpen = expanded === c.concepto;
+              const activas = (c.cuentas || []).filter(a => a.active);
+              const inactivas = (c.cuentas || []).filter(a => !a.active);
+              const asignadas = new Set((c.cuentas || []).map(a => a.cuenta));
+              const disponibles = cuentas.filter(ct => !asignadas.has(ct.codigo) && ct.codigo.length >= 2);
 
-            return (
-              <tr key={c.concepto} style={{ borderBottom: "1px solid #f3f4f6", verticalAlign: "top" }}>
-                {/* Columna concepto */}
-                <td style={{ padding: 10, cursor: "pointer" }}
-                  onClick={() => setExpanded(isOpen ? null : c.concepto)}>
-                  <b style={{ color: "#1d4ed8", fontSize: 14 }}>{c.concepto}</b>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 1 }}>{c.concepto_nombre}</div>
-                </td>
+              return (
+                <tr key={c.concepto} className={`border-b border-gray-100 ${isOpen ? "bg-blue-50/30" : ""}`}>
+                  {/* Columna concepto - click para expandir */}
+                  <td className="px-4 py-3 align-top" style={{ cursor: "pointer", verticalAlign: "top" }}
+                    onClick={() => setExpanded(isOpen ? null : c.concepto)}>
+                    <span className="font-mono font-bold text-blue-700">{c.concepto}</span>
+                    <div className="text-xs text-gray-500 mt-0.5">{c.concepto_nombre}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">
+                      {activas.length > 0 ? `${activas.length} cuentas activas` : "Sin cuentas"}
+                      {!isOpen && (activas.length > 0 || inactivas.length > 0) && " ▼"}
+                      {isOpen && " ▲"}
+                    </div>
+                  </td>
 
-                {/* Columna cuentas */}
-                <td style={{ padding: 10 }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+                  {/* Columna cuentas */}
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex flex-wrap gap-1.5 items-center">
 
-                    {/* Cuentas activas */}
-                    {activas.map(a => (
-                      <label key={a.rule_id} onClick={(e) => e.stopPropagation()} style={{
-                        display: "inline-flex", alignItems: "center", gap: 3,
-                        padding: "3px 7px", border: "1px solid #86efac", borderRadius: 4,
-                        background: "#f0fdf4", fontSize: 12, cursor: "pointer",
-                      }}>
-                        <input type="checkbox" checked
-                          onChange={() => toggle(a.rule_id, true)}
-                          style={{ accentColor: "#16a34a", width: 13, height: 13 }} />
-                        <span style={{ fontFamily: "monospace", color: "#166534", fontWeight: 500 }}>{a.cuenta}</span>
-                      </label>
-                    ))}
+                      {/* Cuentas activas (siempre visibles) */}
+                      {activas.map(a => (
+                        <label key={a.rule_id} className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs cursor-pointer hover:bg-green-100">
+                          <input type="checkbox" checked
+                            onChange={() => toggle(a.rule_id, true)}
+                            className="h-3 w-3 accent-green-600" />
+                          <span className="font-mono font-medium text-green-700">{a.cuenta}</span>
+                        </label>
+                      ))}
 
-                    {/* Expandir: cuentas inactivas + disponibles */}
-                    {isOpen && (
-                      <>
-                        {inactivas.map(a => (
-                          <label key={a.rule_id} style={{
-                            display: "inline-flex", alignItems: "center", gap: 3,
-                            padding: "3px 7px", border: "1px solid #d1d5db", borderRadius: 4,
-                            background: "#f9fafb", fontSize: 12, cursor: "pointer",
-                          }}>
-                            <input type="checkbox"
-                              onChange={() => toggle(a.rule_id, false)}
-                              style={{ accentColor: "#9ca3af", width: 13, height: 13 }} />
-                            <span style={{ fontFamily: "monospace", color: "#9ca3af", textDecoration: "line-through" }}>{a.cuenta}</span>
-                            <button onClick={(e) => { e.stopPropagation(); removeAccount(a.rule_id); }}
-                              style={{ marginLeft: 2, color: "#ef4444", border: "none", background: "none", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}>
-                              ×
-                            </button>
-                          </label>
-                        ))}
+                      {/* Expandido: cuentas inactivas */}
+                      {isOpen && inactivas.map(a => (
+                        <div key={a.rule_id} className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs">
+                          <input type="checkbox"
+                            onChange={() => toggle(a.rule_id, false)}
+                            className="h-3 w-3" />
+                          <span className="font-mono text-gray-400 line-through">{a.cuenta}</span>
+                          <button onClick={() => removeAccount(a.rule_id)}
+                            className="text-red-400 hover:text-red-600 ml-0.5 font-bold">&times;</button>
+                        </div>
+                      ))}
 
-                        {/* Agregar cuentas */}
-                        <div style={{ width: "100%", marginTop: 6, padding: 8, background: "#fafafa", borderRadius: 6, border: "1px dashed #d1d5db" }}>
-                          <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 5px 0" }}>+ Agregar cuentas del balance:</p>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                            {disponibles.slice(0, 50).map(a => (
+                      {/* Expandido: Agregar cuentas */}
+                      {isOpen && (
+                        <div className="w-full mt-3 pt-3 border-t border-dashed border-gray-200">
+                          <p className="text-xs font-semibold text-gray-600 mb-2">+ Agregar cuentas del balance:</p>
+                          <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto">
+                            {disponibles.slice(0, 100).map(a => (
                               <button key={a.codigo}
-                                onClick={(e) => { e.stopPropagation(); addAccount(c.concepto, c.concepto_nombre, a.codigo); }}
-                                style={{
-                                  display: "inline-flex", alignItems: "center", gap: 2,
-                                  padding: "2px 5px", border: "1px solid #e5e7eb", borderRadius: 3,
-                                  background: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "monospace",
-                                  color: "#374151",
-                                }}>
-                                <span style={{ color: "#059669", fontWeight: 500 }}>{a.codigo}</span>
-                                {a.nombre && <span style={{ color: "#9ca3af", fontSize: 10 }}>{a.nombre.substring(0, 15)}</span>}
+                                onClick={() => addAccount(c.concepto, c.concepto_nombre, a.codigo)}
+                                className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-xs font-mono hover:bg-blue-50 hover:border-blue-300 text-left cursor-pointer">
+                                <span className="text-green-600 font-medium">{a.codigo}</span>
+                                {a.nombre && <span className="text-gray-400 truncate max-w-[100px]">{a.nombre.substring(0, 20)}</span>}
                               </button>
                             ))}
+                            {disponibles.length > 100 && (
+                              <span className="text-xs text-gray-400">...y {disponibles.length - 100} más</span>
+                            )}
                           </div>
                         </div>
-                      </>
-                    )}
+                      )}
 
-                    {/* Sin cuentas */}
-                    {!isOpen && activas.length === 0 && (
-                      <span style={{ color: "#d1d5db", fontSize: 12, fontStyle: "italic" }}>Click para configurar</span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+                      {/* Sin cuentas, no expandido */}
+                      {!isOpen && activas.length === 0 && (
+                        <span className="text-xs text-gray-300 italic">Click en el concepto para configurar</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
     </div>
