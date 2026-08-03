@@ -66,35 +66,61 @@ def exportar_excel_endpoint(tenant_id: int, formato: str = Query("1001"),
     )
 
 
-# ── Parametrización (configurador de cuentas) ──
+# ── Parametrización (configurador de cuentas por concepto) ──
 
 @router.get("/template-rules")
 def listar_reglas(formato: str = Query("1001"), db: Session = Depends(get_db)):
-    reglas = db.query(TemplateRule).filter_by(format_code=formato).order_by(TemplateRule.concepto).all()
-    return [
-        {"id": r.id, "format_code": r.format_code, "concepto": r.concepto,
-         "concepto_nombre": r.concepto_nombre, "cuentas_desde": r.cuentas_desde,
-         "cuentas_hasta": r.cuentas_hasta, "doc_types": r.doc_types,
-         "campo_valor": r.campo_valor, "notas": r.notas}
-        for r in reglas
-    ]
+    """Devuelve reglas agrupadas por concepto."""
+    reglas = db.query(TemplateRule).filter_by(format_code=formato)\
+        .order_by(TemplateRule.concepto, TemplateRule.cuentas_desde).all()
+    
+    # Agrupar por concepto
+    grupos = {}
+    for r in reglas:
+        key = r.concepto
+        if key not in grupos:
+            grupos[key] = {
+                "concepto": r.concepto,
+                "concepto_nombre": r.concepto_nombre,
+                "cuentas": [],
+                "doc_types": r.doc_types,
+                "campo_valor": r.campo_valor,
+            }
+        if r.cuentas_desde:
+            grupos[key]["cuentas"].append({
+                "cuenta": r.cuentas_desde,
+                "cuenta_hasta": r.cuentas_hasta if r.cuentas_hasta != r.cuentas_desde else None,
+                "rule_id": r.id,
+            })
+    
+    return sorted(grupos.values(), key=lambda g: g["concepto"])
 
 
 @router.post("/template-rules")
 def crear_regla(payload: dict, db: Session = Depends(get_db)):
+    """Crea una regla: concepto + cuenta individual."""
+    fmt = payload.get("format_code", "1001")
+    cpt = int(payload["concepto"])
+    cuenta = payload.get("cuenta", "")
+    
+    # Ver si ya existe este par
+    existente = db.query(TemplateRule).filter_by(
+        format_code=fmt, concepto=cpt, cuentas_desde=cuenta).first()
+    if existente:
+        return {"id": existente.id, "ok": True, "msg": "Ya existe"}
+    
     r = TemplateRule(
-        format_code=payload.get("format_code", "1001"),
-        concepto=int(payload["concepto"]),
+        format_code=fmt, concepto=cpt,
         concepto_nombre=payload.get("concepto_nombre", ""),
-        cuentas_desde=payload.get("cuentas_desde", ""),
-        cuentas_hasta=payload.get("cuentas_hasta", ""),
-        doc_types=payload.get("doc_types", ""),
+        cuentas_desde=cuenta,
+        cuentas_hasta=cuenta,
+        doc_types=payload.get("doc_types", "NIT,CC"),
         campo_valor=payload.get("campo_valor", "closing"),
         notas=payload.get("notas", ""),
     )
     db.add(r)
     db.commit()
-    return {"id": r.id, "concepto": r.concepto}
+    return {"id": r.id, "ok": True}
 
 
 @router.delete("/template-rules/{rule_id}")
