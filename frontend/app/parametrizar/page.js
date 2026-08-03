@@ -2,216 +2,211 @@
 
 import { useState, useEffect } from "react";
 
-const FORMATOS = ["1001","1005","1647","2821","2822","2854","1476","2574"];
+const CONCEPTOS_DIAN = [
+  { codigo: "5002", nombre: "Honorarios" },
+  { codigo: "5003", nombre: "Comisiones" },
+  { codigo: "5004", nombre: "Servicios" },
+  { codigo: "5005", nombre: "Arrendamientos" },
+  { codigo: "5006", nombre: "Intereses y rendimientos financieros" },
+  { codigo: "5007", nombre: "Compra de activos movibles" },
+  { codigo: "5008", nombre: "Compra de activos fijos" },
+  { codigo: "5010", nombre: "Aportes parafiscales" },
+  { codigo: "5011", nombre: "Pagos a EPS y Riesgos Laborales" },
+  { codigo: "5012", nombre: "Aportes para pensiones" },
+  { codigo: "5013", nombre: "Donaciones en dinero" },
+  { codigo: "5014", nombre: "Donaciones en activos" },
+  { codigo: "5015", nombre: "Impuestos solicitados como deduccion" },
+  { codigo: "5016", nombre: "Demas costos y deducciones" },
+  { codigo: "5020", nombre: "Compra activos fijos productivos" },
+  { codigo: "5055", nombre: "Viaticos" },
+  { codigo: "5056", nombre: "Gastos de representacion" },
+  { codigo: "5063", nombre: "Intereses efectivamente pagados" },
+  { codigo: "5066", nombre: "Impuesto al consumo" },
+];
+
 const API = "http://127.0.0.1:8000";
+const TENANT_ID = 1;
 
 export default function Parametrizar() {
-  const [formato, setFormato] = useState("1001");
-  const [conceptos, setConceptos] = useState([]);
-  const [cuentasBalance, setCuentasBalance] = useState([]);
+  const [mappings, setMappings] = useState([]);
+  const [cuentas, setCuentas] = useState([]);
   const [expanded, setExpanded] = useState(null);
-  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
 
-  function cargar() {
-    setLoading(true);
+  useEffect(() => {
     Promise.all([
-      fetch(`${API}/api/template-rules?formato=${formato}`).then(r=>r.json()),
-      fetch(`${API}/api/cuentas-balance?tenant_id=1`).then(r=>r.json()),
-    ]).then(([c,cu]) => { setConceptos(c); setCuentasBalance(cu); })
-      .catch(e => setMsg("Error al cargar: " + e.message))
+      fetch(`${API}/api/template-rules?formato=1001&tenant_id=${TENANT_ID}`).then(r => r.json()),
+      fetch(`${API}/api/cuentas-balance?tenant_id=${TENANT_ID}`).then(r => r.json()),
+    ]).then(([m, c]) => {
+      setMappings(m);
+      setCuentas(c.filter(x => x.codigo && x.codigo.length >= 4));
+    }).catch(e => setMsg("Error: " + e.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  const grouped = CONCEPTOS_DIAN.map(c => {
+    const grupo = mappings.find(g => g.concepto === parseInt(c.codigo));
+    return {
+      ...c,
+      cuentas: grupo?.cuentas || [],
+    };
+  });
+
+  async function toggle(concepto, cuenta, ruleId, currentActive) {
+    if (ruleId) {
+      await fetch(`${API}/api/template-rules/${ruleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !currentActive }),
+      });
+    } else {
+      const nombre = CONCEPTOS_DIAN.find(c => c.codigo === concepto)?.nombre || "";
+      await fetch(`${API}/api/template-rules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          format_code: "1001", concepto: parseInt(concepto),
+          concepto_nombre: nombre, cuenta, campo_valor: "closing",
+        }),
+      });
+    }
+    const m = await fetch(`${API}/api/template-rules?formato=1001`).then(r => r.json());
+    setMappings(m);
   }
 
-  useEffect(() => { cargar(); }, [formato]);
-
-  async function toggleActive(ruleId, active) {
-    await fetch(`${API}/api/template-rules/${ruleId}`, {
-      method: "PATCH", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({active: !active}),
-    });
-    cargar();
-  }
-
-  async function agregarCuenta(concepto, nombre, cuenta) {
-    await fetch(`${API}/api/template-rules`, {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({format_code: formato, concepto, concepto_nombre: nombre, cuenta, campo_valor:"closing"}),
-    });
-    cargar();
-  }
-
-  async function eliminarCuenta(ruleId) {
-    await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" });
-    cargar();
-  }
-
-  async function autoProponer() {
-    setMsg("Generando propuesta...");
-    const r = await fetch(`${API}/api/template-rules/auto-propose?tenant_id=1&formato=${formato}`, { method:"POST" });
+  async function autoPropuesta() {
+    setMsg("Generando...");
+    const r = await fetch(`${API}/api/template-rules/auto-propose?tenant_id=${TENANT_ID}&formato=1001`, { method: "POST" });
     const d = await r.json();
-    setMsg(`✅ ${d.creados} asignaciones nuevas`);
-    cargar();
+    setMsg(`Propuesta: ${d.creados} cuentas asignadas`);
+    const m = await fetch(`${API}/api/template-rules?formato=1001`).then(r => r.json());
+    setMappings(m);
   }
 
-  function cuentasLibres(concepto) {
-    const asignadas = new Set((concepto?.cuentas||[]).map(a=>a.cuenta));
-    return cuentasBalance.filter(c => !asignadas.has(c.codigo) && c.codigo.length >= 4);
+  async function handleUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setMsg("Importando...");
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(`${API}/api/template-rules/import?formato=1001`, { method: "POST", body: fd });
+    const d = await r.json();
+    setMsg(`Importado: ${d.creados} nuevas, ${d.actualizados} actualizadas`);
+    const m = await fetch(`${API}/api/template-rules?formato=1001`).then(r => r.json());
+    setMappings(m);
+  }
+
+  if (loading) {
+    return <div className="flex h-64 items-center justify-center text-gray-400">Cargando parametrizacion...</div>;
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-900">⚙️ Parametrizar: Conceptos DIAN → Cuentas PUC</h1>
+    <div className="space-y-3" style={{ fontFamily: "system-ui, sans-serif" }}>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-900">Parametrizacion DIAN → PUC</h2>
         <div className="flex gap-2">
-          <a href={`${API}/api/template-rules/export?formato=${formato}&fmt=xlsx`}
-             className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
-            📥 Exportar
+          <a href={`${API}/api/template-rules/export?formato=1001&fmt=xlsx`}
+             className="rounded border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 no-underline">
+            Exportar
           </a>
-          <label className="cursor-pointer rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
-            📤 Importar
-            <input type="file" accept=".csv,.txt,.xlsx,.xls" className="hidden"
-              onChange={async e => {
-                const f = e.target.files[0]; if(!f) return;
-                const fd = new FormData(); fd.append("file", f);
-                setMsg("Importando...");
-                const r = await fetch(`${API}/api/template-rules/import?formato=${formato}`, {method:"POST", body:fd});
-                const d = await r.json();
-                setMsg(`✅ ${d.creados} nuevas, ${d.actualizados} actualizadas${d.warnings?.length ? `, ${d.warnings.length} advertencias` : ""}`);
-                cargar();
-              }} />
+          <label className="cursor-pointer rounded border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+            Importar
+            <input type="file" accept=".csv,.txt,.xlsx,.xls" className="hidden" onChange={handleUpload} />
           </label>
-          <button onClick={autoProponer}
-            className="rounded bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800">
-            🤖 Auto-propuesta
+          <button onClick={autoPropuesta}
+             className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
+            Auto-propuesta
           </button>
         </div>
       </div>
 
-      <div className="flex gap-1 rounded-lg border bg-white px-2 py-1.5 shadow-sm">
-        {FORMATOS.map(f => (
-          <button key={f} onClick={() => { setFormato(f); setExpanded(null); }}
-            className={`rounded px-3 py-1 text-xs font-medium ${
-              formato===f ? "bg-blue-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}>{f}</button>
-        ))}
-        <span className="ml-auto self-center text-[11px] text-gray-400">{conceptos.length} conceptos</span>
-      </div>
+      {msg && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{msg}</div>}
 
-      {msg && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">{msg}</div>}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e0e0e0", borderRadius: 8, overflow: "hidden" }}>
+        <thead>
+          <tr style={{ background: "#f5f5f5" }}>
+            <th style={{ padding: "10px 12px", textAlign: "left", width: 160, fontWeight: 600 }}>Concepto DIAN</th>
+            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600 }}>Cuentas PUC (checkboxes editables)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grouped.map(c => {
+            const isOpen = expanded === c.codigo;
+            const activas = c.cuentas.filter(a => a.active);
+            const inactivas = c.cuentas.filter(a => !a.active);
+            const idsAsignadas = new Set(c.cuentas.map(a => a.cuenta));
+            const disponibles = cuentas.filter(ct => !idsAsignadas.has(ct.codigo));
 
-      {/* TABLA */}
-      <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-[90px]">Concepto</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Cuentas PUC de ESTA empresa</th>
-            </tr>
-          </thead>
-          <tbody>
-            {conceptos.map(c => {
-              const isOpen = expanded === c.concepto;
-              const activas = (c.cuentas||[]).filter(a => a.active);
-              const libres = cuentasLibres(c);
-              return (
-                <tr key={c.concepto} className="border-b hover:bg-gray-50/30">
-                  <td className="px-3 py-2.5 align-top">
-                    <button onClick={() => setExpanded(isOpen ? null : c.concepto)}
-                      className="text-left">
-                      <span className="font-mono font-bold text-blue-700">{c.concepto}</span>
-                      <br/>
-                      <span className="text-[11px] text-gray-500">{c.concepto_nombre}</span>
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {/* Cuentas activas: checkboxes */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {activas.map(a => (
-                        <label key={a.rule_id}
-                          className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-1 text-xs cursor-pointer hover:bg-green-100">
-                          <input type="checkbox" checked={a.active}
-                            onChange={() => toggleActive(a.rule_id, a.active)}
-                            className="h-3 w-3 accent-green-600" />
-                          <span className="font-mono text-green-700">{a.cuenta}</span>
-                          <button onClick={(e) => { e.preventDefault(); eliminarCuenta(a.rule_id); }}
-                            className="ml-1 text-red-400 hover:text-red-600 font-bold">&times;</button>
+            return (
+              <tr key={c.codigo} style={{ borderBottom: "1px solid #eee", verticalAlign: "top" }}>
+                <td style={{ padding: 10, cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : c.codigo)}>
+                  <b style={{ color: "#1a73e8", fontSize: 14 }}>{c.codigo}</b>
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{c.nombre}</div>
+                </td>
+                <td style={{ padding: 10 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                    {activas.map(a => {
+                      const cuentaInfo = cuentas.find(ct => ct.codigo === a.cuenta);
+                      return (
+                        <label key={a.cuenta} style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "4px 8px", border: "1px solid #4caf50", borderRadius: 6,
+                          background: "#e8f5e9", fontSize: 13, cursor: "pointer",
+                        }}>
+                          <input type="checkbox" checked={true}
+                            onChange={() => toggle(c.codigo, a.cuenta, a.rule_id, true)}
+                            style={{ accentColor: "#4caf50" }} />
+                          <span style={{ fontFamily: "monospace", color: "#2e7d32" }}>{a.cuenta}</span>
+                          {cuentaInfo && <span style={{ fontSize: 10, color: "#999" }}>{cuentaInfo.nombre?.substring(0, 25)}</span>}
                         </label>
-                      ))}
-                      {/* Inactivas (solo visibles expandido) */}
-                      {isOpen && (c.cuentas||[]).filter(a => !a.active).map(a => (
-                        <label key={a.rule_id}
-                          className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs cursor-pointer hover:bg-gray-100">
-                          <input type="checkbox" checked={false}
-                            onChange={() => toggleActive(a.rule_id, a.active)}
-                            className="h-3 w-3" />
-                          <span className="font-mono text-gray-400 line-through">{a.cuenta}</span>
-                          <button onClick={(e) => { e.preventDefault(); eliminarCuenta(a.rule_id); }}
-                            className="ml-1 text-red-400 hover:text-red-600 font-bold">&times;</button>
-                        </label>
-                      ))}
-                      
-                      {/* "+ Add account" — solo visible expandido */}
-                      {isOpen && (
-                        <AddAccountButton libres={libres}
-                          onSelect={(cuenta) => agregarCuenta(c.concepto, c.concepto_nombre, cuenta)} />
-                      )}
+                      );
+                    })}
 
-                      {!isOpen && activas.length === 0 && (
-                        <span className="text-xs text-gray-300 italic">Click para expandir</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {loading && (
-              <tr><td colSpan={2} className="py-10 text-center text-gray-400">⏳ Cargando conceptos...</td></tr>
-            )}
-            {!loading && conceptos.length === 0 && (
-              <tr><td colSpan={2} className="py-10 text-center text-gray-400">Sin conceptos para este formato. Usa Auto-propuesta o Importar.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                    {isOpen && inactivas.map(a => (
+                      <label key={a.cuenta} style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "4px 8px", border: "1px solid #ddd", borderRadius: 6,
+                        background: "#fafafa", fontSize: 13, cursor: "pointer",
+                      }}>
+                        <input type="checkbox" checked={false}
+                          onChange={() => toggle(c.codigo, a.cuenta, a.rule_id, false)}
+                          style={{ accentColor: "#999" }} />
+                        <span style={{ fontFamily: "monospace", color: "#999", textDecoration: "line-through" }}>{a.cuenta}</span>
+                      </label>
+                    ))}
+
+                    {isOpen && (
+                      <div style={{ width: "100%", marginTop: 8, padding: 8, background: "#fafafa", borderRadius: 8 }}>
+                        <p style={{ fontSize: 12, color: "#666", margin: "0 0 6px 0" }}>+ Agregar cuentas del balance:</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {disponibles.slice(0, 60).map(a => (
+                            <label key={a.codigo} style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "3px 6px", border: "1px solid #e0e0e0", borderRadius: 4,
+                              fontSize: 12, cursor: "pointer",
+                            }}>
+                              <input type="checkbox"
+                                onChange={() => toggle(c.codigo, a.codigo, null, false)}
+                                style={{ accentColor: "#1a73e8" }} />
+                              <span style={{ fontFamily: "monospace" }}>{a.codigo}</span>
+                              <span style={{ fontSize: 10, color: "#999" }}>{a.nombre?.substring(0, 20)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!isOpen && activas.length === 0 && (
+                      <span style={{ color: "#bbb", fontSize: 13, fontStyle: "italic" }}>Click para ver cuentas</span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
-  );
-}
-
-// Componente: botón "+ Add account" con buscador
-function AddAccountButton({ libres, onSelect }) {
-  const [open, setOpen] = useState(false);
-  const [filtro, setFiltro] = useState("");
-
-  const filtradas = libres.filter(c =>
-    !filtro || c.codigo.includes(filtro) || (c.nombre||"").toLowerCase().includes(filtro.toLowerCase())
-  ).slice(0, 60);
-
-  return (
-    <span className="relative inline-block">
-      <button onClick={() => setOpen(!open)}
-        className="rounded border border-dashed border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-100">
-        + Add account
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border bg-white shadow-xl">
-          <input type="text" placeholder="Buscar cuenta..." autoFocus
-            value={filtro} onChange={e => setFiltro(e.target.value)}
-            className="w-full border-b px-3 py-2 text-xs outline-none" />
-          <div className="max-h-48 overflow-auto">
-            {filtradas.map(c => (
-              <div key={c.codigo} onClick={() => { onSelect(c.codigo); setOpen(false); setFiltro(""); }}
-                className="cursor-pointer px-3 py-1.5 text-xs hover:bg-blue-50 border-b last:border-0">
-                <span className="font-mono text-green-700">{c.codigo}</span>
-                <span className="ml-2 text-gray-500">{c.nombre}</span>
-              </div>
-            ))}
-            {filtradas.length === 0 && (
-              <p className="px-3 py-2 text-xs text-gray-400">Sin resultados</p>
-            )}
-          </div>
-        </div>
-      )}
-    </span>
   );
 }
