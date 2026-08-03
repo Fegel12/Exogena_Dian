@@ -2,103 +2,165 @@
 
 import { useState, useEffect } from "react";
 
-const FORMATOS = [
-  "1001", "1005", "1647", "2821", "2822", "2854", "1476", "2574",
-];
-
+const FORMATOS = ["1001","1005","1647","2821","2822","2854","1476","2574"];
 const API = "http://127.0.0.1:8000";
 
 export default function Parametrizar() {
   const [formato, setFormato] = useState("1001");
   const [conceptos, setConceptos] = useState([]);
-  const [cuentas, setCuentas] = useState([]);
+  const [cuentasBalance, setCuentasBalance] = useState([]);
+  const [expanded, setExpanded] = useState(null);
   const [msg, setMsg] = useState("");
 
   function cargar() {
     Promise.all([
-      fetch(`${API}/api/template-rules?formato=${formato}`).then(r => r.json()),
-      fetch(`${API}/api/cuentas-balance?tenant_id=1`).then(r => r.json()),
-    ]).then(([c, cu]) => { setConceptos(c); setCuentas(cu); }).catch(() => {});
+      fetch(`${API}/api/template-rules?formato=${formato}`).then(r=>r.json()),
+      fetch(`${API}/api/cuentas-balance?tenant_id=1`).then(r=>r.json()),
+    ]).then(([c,cu]) => { setConceptos(c); setCuentasBalance(cu); });
   }
 
   useEffect(() => { cargar(); }, [formato]);
 
-  async function agregar(concepto, nombre, cuenta, campoValor) {
-    try {
-      const res = await fetch(`${API}/api/template-rules`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          format_code: formato, concepto, concepto_nombre: nombre,
-          cuenta, campo_valor: campoValor,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      cargar();
-      setMsg(`✅ ${cuenta} → ${concepto}`);
-      setTimeout(() => setMsg(""), 2000);
-    } catch (e) { setMsg(`❌ ${e}`); }
+  async function toggleActive(ruleId, active) {
+    await fetch(`${API}/api/template-rules/${ruleId}`, {
+      method: "PATCH", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({active: !active}),
+    });
+    cargar();
   }
 
-  async function eliminar(ruleId, cuenta, concepto) {
-    try {
-      await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" });
-      cargar();
-      setMsg(`🗑️ ${cuenta} removida de ${concepto}`);
-      setTimeout(() => setMsg(""), 2000);
-    } catch (e) { setMsg(`❌ ${e}`); }
+  async function agregarCuenta(concepto, nombre, cuenta) {
+    await fetch(`${API}/api/template-rules`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({format_code: formato, concepto, concepto_nombre: nombre, cuenta, campo_valor:"closing"}),
+    });
+    cargar();
+  }
+
+  async function eliminarCuenta(ruleId) {
+    await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" });
+    cargar();
+  }
+
+  async function autoProponer() {
+    setMsg("Generando propuesta...");
+    const r = await fetch(`${API}/api/template-rules/auto-propose?tenant_id=1&formato=${formato}`, { method:"POST" });
+    const d = await r.json();
+    setMsg(`✅ ${d.creados} asignaciones nuevas`);
+    cargar();
   }
 
   function cuentasLibres(concepto) {
-    const asignadas = new Set((concepto?.cuentas || []).map(a => a.cuenta));
-    return cuentas.filter(c => !asignadas.has(c.codigo) && c.codigo.length >= 4);
+    const asignadas = new Set((concepto?.cuentas||[]).map(a=>a.cuenta));
+    return cuentasBalance.filter(c => !asignadas.has(c.codigo) && c.codigo.length >= 4);
   }
 
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold text-gray-900">⚙️ Parametrizar cuentas por concepto DIAN</h1>
-
-      {/* Barra formato + mensaje */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-white px-3 py-2 shadow-sm">
-        {FORMATOS.map(f => (
-          <button key={f} onClick={() => setFormato(f)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              formato === f ? "bg-blue-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}>
-            {f}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-bold text-gray-900">⚙️ Parametrizar: Conceptos DIAN → Cuentas PUC</h1>
+        <div className="flex gap-2">
+          <a href={`${API}/api/template-rules/export?formato=${formato}&fmt=xlsx`}
+             className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
+            📥 Exportar
+          </a>
+          <label className="cursor-pointer rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
+            📤 Importar
+            <input type="file" accept=".csv,.txt,.xlsx,.xls" className="hidden"
+              onChange={async e => {
+                const f = e.target.files[0]; if(!f) return;
+                const fd = new FormData(); fd.append("file", f);
+                setMsg("Importando...");
+                const r = await fetch(`${API}/api/template-rules/import?formato=${formato}`, {method:"POST", body:fd});
+                const d = await r.json();
+                setMsg(`✅ ${d.creados} nuevas, ${d.actualizados} actualizadas${d.warnings?.length ? `, ${d.warnings.length} advertencias` : ""}`);
+                cargar();
+              }} />
+          </label>
+          <button onClick={autoProponer}
+            className="rounded bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800">
+            🤖 Auto-propuesta
           </button>
-        ))}
-        <span className="ml-auto text-xs text-gray-400">{conceptos.length} conceptos · {cuentas.length} cuentas</span>
+        </div>
       </div>
 
-      {msg && (
-        <div className={`rounded-md border px-3 py-2 text-xs font-medium ${
-          msg.startsWith("✅") ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"
-        }`}>{msg}</div>
-      )}
+      <div className="flex gap-1 rounded-lg border bg-white px-2 py-1.5 shadow-sm">
+        {FORMATOS.map(f => (
+          <button key={f} onClick={() => { setFormato(f); setExpanded(null); }}
+            className={`rounded px-3 py-1 text-xs font-medium ${
+              formato===f ? "bg-blue-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}>{f}</button>
+        ))}
+        <span className="ml-auto self-center text-[11px] text-gray-400">{conceptos.length} conceptos</span>
+      </div>
 
-      {/* TABLA PRINCIPAL */}
+      {msg && <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">{msg}</div>}
+
+      {/* TABLA */}
       <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-[100px]">Concepto</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-[300px]">Nombre</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Cuentas asignadas</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-[280px]">Agregar cuenta</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-[90px]">Concepto</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Cuentas PUC de ESTA empresa</th>
             </tr>
           </thead>
           <tbody>
-            {conceptos.map(c => (
-              <ConceptoRow key={c.concepto}
-                concepto={c} libres={cuentasLibres(c)}
-                onAgregar={(cuenta, campo) => agregar(c.concepto, c.concepto_nombre, cuenta, campo)}
-                onEliminar={(ruleId, cuenta) => eliminar(ruleId, cuenta, c.concepto)}
-              />
-            ))}
-            {conceptos.length === 0 && (
-              <tr><td colSpan={4} className="py-8 text-center text-gray-400">Sin conceptos para este formato</td></tr>
-            )}
+            {conceptos.map(c => {
+              const isOpen = expanded === c.concepto;
+              const activas = (c.cuentas||[]).filter(a => a.active);
+              const libres = cuentasLibres(c);
+              return (
+                <tr key={c.concepto} className="border-b hover:bg-gray-50/30">
+                  <td className="px-3 py-2.5 align-top">
+                    <button onClick={() => setExpanded(isOpen ? null : c.concepto)}
+                      className="text-left">
+                      <span className="font-mono font-bold text-blue-700">{c.concepto}</span>
+                      <br/>
+                      <span className="text-[11px] text-gray-500">{c.concepto_nombre}</span>
+                    </button>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {/* Cuentas activas: checkboxes */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {activas.map(a => (
+                        <label key={a.rule_id}
+                          className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-1 text-xs cursor-pointer hover:bg-green-100">
+                          <input type="checkbox" checked={a.active}
+                            onChange={() => toggleActive(a.rule_id, a.active)}
+                            className="h-3 w-3 accent-green-600" />
+                          <span className="font-mono text-green-700">{a.cuenta}</span>
+                          <button onClick={(e) => { e.preventDefault(); eliminarCuenta(a.rule_id); }}
+                            className="ml-1 text-red-400 hover:text-red-600 font-bold">&times;</button>
+                        </label>
+                      ))}
+                      {/* Inactivas (solo visibles expandido) */}
+                      {isOpen && (c.cuentas||[]).filter(a => !a.active).map(a => (
+                        <label key={a.rule_id}
+                          className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs cursor-pointer hover:bg-gray-100">
+                          <input type="checkbox" checked={false}
+                            onChange={() => toggleActive(a.rule_id, a.active)}
+                            className="h-3 w-3" />
+                          <span className="font-mono text-gray-400 line-through">{a.cuenta}</span>
+                          <button onClick={(e) => { e.preventDefault(); eliminarCuenta(a.rule_id); }}
+                            className="ml-1 text-red-400 hover:text-red-600 font-bold">&times;</button>
+                        </label>
+                      ))}
+                      
+                      {/* "+ Add account" — solo visible expandido */}
+                      {isOpen && (
+                        <AddAccountButton libres={libres}
+                          onSelect={(cuenta) => agregarCuenta(c.concepto, c.concepto_nombre, cuenta)} />
+                      )}
+
+                      {!isOpen && activas.length === 0 && (
+                        <span className="text-xs text-gray-300 italic">Click para expandir</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -106,79 +168,40 @@ export default function Parametrizar() {
   );
 }
 
-// Componente separado para cada fila (necesario para usar hooks dentro de map)
-function ConceptoRow({ concepto, libres, onAgregar, onEliminar }) {
-  const [cuentaSel, setCuentaSel] = useState("");
-  const [campoVal, setCampoVal] = useState("closing");
+// Componente: botón "+ Add account" con buscador
+function AddAccountButton({ libres, onSelect }) {
+  const [open, setOpen] = useState(false);
   const [filtro, setFiltro] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
 
   const filtradas = libres.filter(c =>
-    !filtro || c.codigo.includes(filtro) || (c.nombre || "").toLowerCase().includes(filtro.toLowerCase())
-  ).slice(0, 80);
+    !filtro || c.codigo.includes(filtro) || (c.nombre||"").toLowerCase().includes(filtro.toLowerCase())
+  ).slice(0, 60);
 
   return (
-    <tr className="border-b hover:bg-gray-50/50 align-top">
-      <td className="px-3 py-2.5 font-mono font-bold text-blue-700">{concepto.concepto}</td>
-      <td className="px-3 py-2.5 text-gray-800">{concepto.concepto_nombre}</td>
-      
-      {/* Cuentas asignadas */}
-      <td className="px-3 py-2.5">
-        {!concepto.cuentas?.length ? (
-          <span className="text-xs text-gray-300 italic">Sin cuentas</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {concepto.cuentas.map(a => (
-              <span key={a.rule_id} className="inline-flex items-center gap-1 rounded bg-green-50 border border-green-200 px-1.5 py-0.5 text-xs font-mono text-green-700">
-                {a.cuenta}
-                <button onClick={() => onEliminar(a.rule_id, a.cuenta)}
-                  className="text-red-400 hover:text-red-600 font-bold text-[10px] leading-none">&times;</button>
-              </span>
-            ))}
-          </div>
-        )}
-      </td>
-
-      {/* Agregar cuenta */}
-      <td className="px-3 py-2.5">
-        <div className="flex gap-1">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={filtro}
-              onChange={e => { setFiltro(e.target.value); setShowDropdown(true); }}
-              onFocus={() => setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-              placeholder="Buscar..."
-              className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
-            />
-            {showDropdown && filtradas.length > 0 && (
-              <div className="absolute z-10 mt-0.5 max-h-40 w-full overflow-auto rounded border bg-white shadow-lg">
-                {filtradas.map(c => (
-                  <div key={c.codigo}
-                    className="cursor-pointer px-2 py-1 text-xs hover:bg-blue-50"
-                    onMouseDown={() => { setCuentaSel(c.codigo); setFiltro(c.codigo + " — " + c.nombre); setShowDropdown(false); }}>
-                    <span className="font-mono text-green-700">{c.codigo}</span>
-                    <span className="ml-1 text-gray-500">{c.nombre}</span>
-                  </div>
-                ))}
+    <span className="relative inline-block">
+      <button onClick={() => setOpen(!open)}
+        className="rounded border border-dashed border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-100">
+        + Add account
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border bg-white shadow-xl">
+          <input type="text" placeholder="Buscar cuenta..." autoFocus
+            value={filtro} onChange={e => setFiltro(e.target.value)}
+            className="w-full border-b px-3 py-2 text-xs outline-none" />
+          <div className="max-h-48 overflow-auto">
+            {filtradas.map(c => (
+              <div key={c.codigo} onClick={() => { onSelect(c.codigo); setOpen(false); setFiltro(""); }}
+                className="cursor-pointer px-3 py-1.5 text-xs hover:bg-blue-50 border-b last:border-0">
+                <span className="font-mono text-green-700">{c.codigo}</span>
+                <span className="ml-2 text-gray-500">{c.nombre}</span>
               </div>
+            ))}
+            {filtradas.length === 0 && (
+              <p className="px-3 py-2 text-xs text-gray-400">Sin resultados</p>
             )}
           </div>
-          <select value={campoVal} onChange={e => setCampoVal(e.target.value)}
-            className="w-20 rounded border border-gray-300 px-1 py-1 text-xs text-gray-700">
-            <option value="closing">Saldo</option>
-            <option value="debits">Débito</option>
-            <option value="credits">Crédito</option>
-          </select>
-          <button
-            onClick={() => { if (cuentaSel) { onAgregar(cuentaSel, campoVal); setCuentaSel(""); setFiltro(""); } }}
-            disabled={!cuentaSel}
-            className="rounded bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40">
-            +
-          </button>
         </div>
-      </td>
-    </tr>
+      )}
+    </span>
   );
 }

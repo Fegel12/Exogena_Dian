@@ -132,9 +132,11 @@ class TemplateRule(Base):
     concepto_nombre = Column(String(200))
     cuentas_desde = Column(String(12))
     cuentas_hasta = Column(String(12))
-    doc_types = Column(String(100))      # NIT,CC,SIN (vacío = todos)
-    campo_valor = Column(String(30))     # closing | debits | credits
+    doc_types = Column(String(100))
+    campo_valor = Column(String(30))
     notas = Column(Text)
+    active = Column(Boolean, default=True)  # checkbox: active/inactive
+    tenant_id = Column(Integer, index=True, nullable=True)  # por empresa
 
 
 class GeneratedFile(Base):
