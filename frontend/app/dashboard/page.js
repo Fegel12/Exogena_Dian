@@ -1,5 +1,8 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
+import { BotonesExportar } from "./botones";
+
 async function getDashboard() {
   try {
     const res = await fetch("http://127.0.0.1:8000/api/companies/1/dashboard", {
@@ -53,6 +56,8 @@ export default async function Dashboard() {
           {balance.period} — {balance.file_name}
         </p>
       </div>
+
+      <BotonesExportar />
 
       {/* Totales */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Rutas de balances: importar archivo, dashboard e incidencias."""
-import os
-import shutil
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+"""Rutas de balances: importar archivo, dashboard, exportar incidencias, informe terceros."""
+import os, io, shutil
+from datetime import datetime
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from app.database import get_db, DATA_DIR
-from app.models import Balance, BalanceRow, Tenant, ValidationIssue
+from app.models import Balance, BalanceRow, Tenant, ValidationIssue, ThirdParty
 from app.services.balance_importer import importar_balance
 from app.services.validator import validar_balance
+import openpyxl
 
 router = APIRouter(prefix="/api/companies/{tenant_id}", tags=["balances"])
 UPLOADS = os.path.join(DATA_DIR, "uploads")
@@ -95,3 +97,119 @@ def incidencias(tenant_id: int, balance_id: int = None, tipo: str = None,
          "amount": i.amount, "message": i.message, "action": i.action}
         for i in q.order_by(ValidationIssue.id).limit(500).all()
     ]
+
+
+# ── Exportar incidencias a Excel ──
+
+@router.get("/issues/export")
+def exportar_incidencias(tenant_id: int, db: Session = Depends(get_db)):
+    bal = (db.query(Balance).filter_by(tenant_id=tenant_id)
+           .order_by(Balance.id.desc()).first())
+    if not bal:
+        raise HTTPException(404, "No hay balances importados.")
+
+    issues = (db.query(ValidationIssue).filter_by(balance_id=bal.id)
+              .order_by(ValidationIssue.issue_type, ValidationIssue.amount).all())
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Incidencias"
+    ws.append(["Tipo", "Severidad", "Cuenta", "Nombre Cuenta", "Tercero",
+               "Monto", "Qué pasó", "Qué hacer"])
+
+    for i in issues:
+        ws.append([i.issue_type, i.severity, i.code, i.account_name,
+                   i.third_party, i.amount, i.message, i.action])
+
+    # Auto-ancho
+    for col in ws.columns:
+        max_len = max((len(str(c.value or "")) for c in col), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 60)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=incidencias_empresa{tenant_id}.xlsx"},
+    )
+
+
+# ── Informe de terceros (no encontrados + cancelados) ──
+
+@router.get("/terceros/reporte")
+def reporte_terceros(tenant_id: int, db: Session = Depends(get_db)):
+    bal = (db.query(Balance).filter_by(tenant_id=tenant_id)
+           .order_by(Balance.id.desc()).first())
+    if not bal:
+        raise HTTPException(404, "No hay balances importados.")
+
+    # Terceros no encontrados en la BD
+    not_found = (db.query(ValidationIssue)
+                 .filter_by(balance_id=bal.id, issue_type="THIRD_PARTY_NOT_FOUND")
+                 .all())
+
+    # Buscar terceros cancelados: los que están en RUES con estado CANCELADA
+    # y aparecen en el balance (terceros que SÍ se encontraron pero están cancelados)
+    terceros_balance = set()
+    for issue in not_found:
+        # el issue tiene código de cuenta y third_party (nombre)
+        pass  # usamos directamente los issues
+
+    # Terceros del balance que SÍ están en RUES - búsqueda por lotes
+    rows = (db.query(BalanceRow).filter_by(balance_id=bal.id, row_type="thirdparty").all())
+    
+    # Agrupar por (doc_type, doc_number) para búsqueda en lote
+    pares = list(set((r.doc_type, r.doc_number) for r in rows if r.doc_number and r.doc_type))
+    
+    # Buscar todos los terceros en una sola consulta compuesta
+    terceros_dict = {}
+    from sqlalchemy import or_
+    if pares:
+        conditions = []
+        for dt, dn in pares[:5000]:  # límite razonable
+            conditions.append((ThirdParty.doc_type == dt) & (ThirdParty.doc_number == dn))
+        if conditions:
+            tps = db.query(ThirdParty).filter(or_(*conditions)).all()
+            for tp in tps:
+                terceros_dict[(tp.doc_type, tp.doc_number)] = tp
+    
+    cancelados = []
+    encontrados_count = 0
+    
+    for row in rows:
+        if not row.doc_number or not row.doc_type:
+            continue
+        tp = terceros_dict.get((row.doc_type, row.doc_number))
+        if tp:
+            encontrados_count += 1
+            if tp.estado and "CANCEL" in tp.estado.upper():
+                cancelados.append({
+                    "doc_type": row.doc_type,
+                    "doc_number": row.doc_number,
+                    "name": row.third_party_name,
+                    "estado": tp.estado,
+                    "fecha_actualizacion": tp.updated_at,
+                    "matricula": tp.matricula,
+                    "camara": tp.camara_name,
+                })
+
+    # No encontrados
+    no_encontrados = []
+    for issue in not_found:
+        no_encontrados.append({
+            "cuenta": issue.code,
+            "cuenta_nombre": issue.account_name,
+            "tercero": issue.third_party,
+            "monto": issue.amount,
+        })
+
+    return {
+        "total_terceros_balance": len(rows),
+        "no_encontrados": no_encontrados,
+        "total_no_encontrados": len(no_encontrados),
+        "cancelados": cancelados,
+        "total_cancelados": len(cancelados),
+        "encontrados_activos": encontrados_count - len(cancelados),
+    }
