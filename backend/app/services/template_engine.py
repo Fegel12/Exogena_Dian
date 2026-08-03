@@ -77,7 +77,9 @@ def exportar_excel(balance_id, format_code, db):
     for regla in reglas:
         doc_types = [d.strip() for d in (regla.doc_types or "").split(",") if d.strip()]
         for r in terceros:
-            if r.code < regla.cuentas_desde or r.code > regla.cuentas_hasta:
+            if regla.cuentas_desde and r.code and r.code < regla.cuentas_desde:
+                continue
+            if regla.cuentas_hasta and r.code and r.code > regla.cuentas_hasta:
                 continue
             if doc_types and r.doc_type and r.doc_type not in doc_types:
                 continue
@@ -217,7 +219,9 @@ def generar_formato(balance_id, format_code, db):
     for regla in reglas:
         doc_types = [d.strip() for d in (regla.doc_types or "").split(",") if d.strip()]
         for r in terceros:
-            if r.code < regla.cuentas_desde or r.code > regla.cuentas_hasta:
+            if regla.cuentas_desde and r.code and r.code < regla.cuentas_desde:
+                continue
+            if regla.cuentas_hasta and r.code and r.code > regla.cuentas_hasta:
                 continue
             if doc_types and r.doc_type and r.doc_type not in doc_types:
                 continue
