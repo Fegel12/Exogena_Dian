@@ -29,6 +29,10 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
 
   function cambiarFormato(f) { setFormato(f); setExpanded(null); cargar(f); }
 
+  function toggleExpand(cpt) {
+    setExpanded(prev => prev === cpt ? null : cpt);
+  }
+
   async function toggle(ruleId, currentActive) {
     setConceptos(prev => prev.map(c => ({
       ...c, cuentas: (c.cuentas || []).map(a => a.rule_id === ruleId ? {...a, active: !currentActive} : a)
@@ -38,20 +42,21 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
         method: "PATCH", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ active: !currentActive }),
       });
-    } catch (e) { cargar(); }
+    } catch { cargar(); }
   }
 
-  async function removeAccount(ruleId) {
+  async function eliminarCuenta(ruleId, cuenta) {
+    if (!confirm(`¿Eliminar cuenta ${cuenta}?`)) return;
     setConceptos(prev => prev.map(c => ({
       ...c, cuentas: (c.cuentas || []).filter(a => a.rule_id !== ruleId)
     })));
     try { await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" }); }
-    catch (e) { cargar(); }
+    catch (e) { cargar(); setMsg("Error al eliminar"); }
   }
 
   async function addAccount(concepto, nombre, cuenta) {
     setConceptos(prev => prev.map(c => {
-      if (c.concepto !== parseInt(concepto)) return c;
+      if (String(c.concepto) !== String(concepto)) return c;
       if ((c.cuentas || []).find(a => a.cuenta === cuenta)) {
         return { ...c, cuentas: c.cuentas.map(a => a.cuenta === cuenta ? {...a, active: true} : a) };
       }
@@ -98,8 +103,8 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
 
       <table className="w-full border-collapse border border-gray-200">
         <thead><tr className="bg-gray-50 border-b border-gray-200">
-          <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700">Concepto DIAN</th>
-          <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700">Cuentas PUC</th>
+          <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700 w-[150px]">Concepto DIAN</th>
+          <th className="px-4 py-2.5 text-left text-sm font-semibold text-gray-700">Cuentas PUC de ESTA empresa</th>
         </tr></thead>
         <tbody>
           {!loading && conceptos.length === 0 ? (
@@ -108,19 +113,20 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
               <button onClick={autoPropuesta} className="mt-2 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Generar Auto-propuesta</button>
             </td></tr>
           ) : (conceptos.map(c => {
-            const isOpen = expanded === c.concepto;
+            const cpt = c.concepto;
+            const isOpen = expanded === cpt;
             const activas = (c.cuentas || []).filter(a => a.active);
             const inactivas = (c.cuentas || []).filter(a => !a.active);
             const asignadas = new Set((c.cuentas || []).map(a => a.cuenta));
-            const disponibles = cuentas.filter(ct => !asignadas.has(ct.codigo));
+            const disponibles = cuentas.filter(ct => !asignadas.has(ct.codigo) && ct.codigo.length >= 2);
 
             return (
-              <tr key={c.concepto} className={`border-b border-gray-100 ${isOpen ? "bg-blue-50/30" : ""}`}>
-                {/* CONCEPTO - siempre clickeable */}
-                <td className="px-4 py-3 cursor-pointer" onClick={() => setExpanded(isOpen ? null : c.concepto)}>
-                  <span className="font-mono font-bold text-blue-700">{c.concepto}</span>
+              <tr key={cpt} className={`border-b border-gray-100 ${isOpen ? "bg-blue-50/30" : ""}`}>
+                {/* CONCEPTO - click expande */}
+                <td className="px-4 py-3 cursor-pointer hover:bg-gray-50" onClick={() => toggleExpand(cpt)}>
+                  <span className="font-mono font-bold text-blue-700">{cpt}</span>
                   <div className="text-xs text-gray-500">{c.concepto_nombre}</div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">
+                  <div className="text-[10px] text-gray-400 mt-0.5">
                     {activas.length} activas {isOpen ? "▲" : "▼"}
                   </div>
                 </td>
@@ -128,46 +134,55 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
                 {/* CUENTAS */}
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1.5 items-start">
-                    {/* Activas */}
+                    {/* ACTIVAS con botón ELIMINAR */}
                     {activas.map(a => (
-                      <label key={a.rule_id} className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs cursor-pointer">
+                      <div key={a.rule_id} className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs">
                         <input type="checkbox" checked onChange={() => toggle(a.rule_id, true)} className="h-3 w-3 accent-green-600" />
                         <span className="font-mono font-medium text-green-700">{a.cuenta}</span>
-                      </label>
+                        <button onClick={(e) => { e.stopPropagation(); eliminarCuenta(a.rule_id, a.cuenta); }}
+                          className="ml-0.5 text-red-400 hover:text-red-600 font-bold text-sm leading-none" title="Eliminar cuenta">
+                          ×
+                        </button>
+                      </div>
                     ))}
 
-                    {/* Inactivas (solo expandido) */}
+                    {/* INACTIVAS (expandido) */}
                     {isOpen && inactivas.map(a => (
                       <div key={a.rule_id} className="inline-flex items-center gap-1 rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs">
                         <input type="checkbox" onChange={() => toggle(a.rule_id, false)} className="h-3 w-3" />
                         <span className="font-mono text-gray-400 line-through">{a.cuenta}</span>
-                        <button onClick={() => removeAccount(a.rule_id)} className="text-red-400 hover:text-red-600 font-bold">&times;</button>
+                        <button onClick={(e) => { e.stopPropagation(); eliminarCuenta(a.rule_id, a.cuenta); }}
+                          className="ml-0.5 text-red-400 hover:text-red-600 font-bold text-sm leading-none" title="Eliminar cuenta">
+                          ×
+                        </button>
                       </div>
                     ))}
 
-                    {/* BOTÓN + (siempre visible, más prominente cuando expandido) */}
-                    {isOpen ? (
+                    {/* BOTÓN + (siempre visible) */}
+                    <button onClick={(e) => { e.stopPropagation(); toggleExpand(cpt); }}
+                      className="rounded border border-dashed border-blue-400 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100 hover:border-blue-500">
+                      + Agregar
+                    </button>
+
+                    {/* EXPANDIDO: selector de cuentas */}
+                    {isOpen && (
                       <div className="w-full mt-2 pt-2 border-t border-dashed border-gray-200">
-                        <p className="text-xs font-semibold text-gray-600 mb-2">+ Agregar cuentas del balance ({disponibles.length} disponibles):</p>
+                        <p className="text-xs font-semibold text-gray-600 mb-2">
+                          Selecciona cuentas del balance para agregar ({disponibles.length} disponibles):
+                        </p>
                         <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto p-1">
                           {disponibles.slice(0, 100).map(a => (
-                            <button key={a.codigo} onClick={() => addAccount(c.concepto, c.concepto_nombre, a.codigo)}
+                            <button key={a.codigo} onClick={() => addAccount(cpt, c.concepto_nombre, a.codigo)}
                               className="inline-flex gap-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-xs hover:bg-blue-50 hover:border-blue-300 cursor-pointer font-mono">
                               <span className="text-green-600 font-medium">{a.codigo}</span>
-                              {a.nombre && <span className="text-gray-400 text-[10px] truncate max-w-[100px]">{a.nombre.substring(0, 18)}</span>}
+                              {a.nombre && <span className="text-gray-400 text-[10px] truncate max-w-[100px]">{a.nombre.substring(0, 15)}</span>}
                             </button>
                           ))}
+                          {disponibles.length > 100 && (
+                            <span className="text-xs text-gray-400">...y {disponibles.length - 100} más</span>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <button className="rounded border border-dashed border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100"
-                        onClick={(e) => { e.stopPropagation(); setExpanded(c.concepto); }}>
-                        + Agregar cuenta
-                      </button>
-                    )}
-
-                    {!isOpen && activas.length === 0 && (
-                      <span className="text-xs text-gray-300 italic">▼</span>
                     )}
                   </div>
                 </td>
