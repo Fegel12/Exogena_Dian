@@ -32,24 +32,50 @@ export default function TablaParametrizar({ initialConceptos, initialCuentas }) 
   }
 
   async function toggle(ruleId, currentActive) {
-    await fetch(`${API}/api/template-rules/${ruleId}`, {
-      method: "PATCH", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ active: !currentActive }),
-    });
-    cargar();
-  }
-
-  async function addAccount(concepto, nombre, cuenta) {
-    await fetch(`${API}/api/template-rules`, {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ format_code: formato, concepto: parseInt(concepto), concepto_nombre: nombre, cuenta, campo_valor: "closing" }),
-    });
-    cargar();
+    // Instantáneo en UI
+    setConceptos(prev => prev.map(c => ({
+      ...c, cuentas: (c.cuentas || []).map(a =>
+        a.rule_id === ruleId ? {...a, active: !currentActive} : a)
+    })));
+    try {
+      await fetch(`${API}/api/template-rules/${ruleId}`, {
+        method: "PATCH", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ active: !currentActive }),
+      });
+    } catch (e) { cargar(); }
   }
 
   async function removeAccount(ruleId) {
-    await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" });
-    cargar();
+    setConceptos(prev => prev.map(c => ({
+      ...c, cuentas: (c.cuentas || []).filter(a => a.rule_id !== ruleId)
+    })));
+    try {
+      await fetch(`${API}/api/template-rules/${ruleId}`, { method: "DELETE" });
+    } catch (e) { cargar(); }
+  }
+
+  async function addAccount(concepto, nombre, cuenta) {
+    // Actualizar UI inmediatamente
+    setConceptos(prev => prev.map(c => {
+      if (c.concepto !== parseInt(concepto)) return c;
+      const existing = (c.cuentas || []).find(a => a.cuenta === cuenta);
+      if (existing) {
+        return { ...c, cuentas: c.cuentas.map(a => a.cuenta === cuenta ? {...a, active: true} : a) };
+      }
+      return { ...c, cuentas: [...(c.cuentas || []), { cuenta, active: true, rule_id: Date.now(), campo_valor: "closing" }] };
+    }));
+
+    try {
+      const res = await fetch(`${API}/api/template-rules`, {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ format_code: formato, concepto: parseInt(concepto), concepto_nombre: nombre, cuenta, campo_valor: "closing" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      cargar(); // refrescar desde el servidor
+    } catch (e) {
+      setMsg("Error al agregar: " + e.message);
+      cargar(); // revertir UI
+    }
   }
 
   async function autoPropuesta() {
