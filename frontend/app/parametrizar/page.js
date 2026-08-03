@@ -35,14 +35,24 @@ export default function Parametrizar() {
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     Promise.all([
-      fetch(`${API}/api/template-rules?formato=1001&tenant_id=${TENANT_ID}`).then(r => r.json()),
-      fetch(`${API}/api/cuentas-balance?tenant_id=${TENANT_ID}`).then(r => r.json()),
+      fetch(`${API}/api/template-rules?formato=1001&tenant_id=${TENANT_ID}`, { signal: controller.signal }).then(r => r.json()),
+      fetch(`${API}/api/cuentas-balance?tenant_id=${TENANT_ID}`, { signal: controller.signal }).then(r => r.json()),
     ]).then(([m, c]) => {
       setMappings(m);
-      setCuentas(c.filter(x => x.codigo && x.codigo.length >= 4));
-    }).catch(e => setMsg("Error: " + e.message))
-      .finally(() => setLoading(false));
+      setCuentas(Array.isArray(c) ? c.filter(x => x.codigo && x.codigo.length >= 4) : []);
+    }).catch(e => {
+      if (e.name === 'AbortError') setMsg("Tiempo de espera agotado. Verifica que el backend este corriendo.");
+      else setMsg("Error al cargar: " + (e.message || ''));
+    }).finally(() => {
+      clearTimeout(timeout);
+      setLoading(false);
+    });
+
+    return () => { controller.abort(); clearTimeout(timeout); };
   }, []);
 
   const grouped = CONCEPTOS_DIAN.map(c => {
