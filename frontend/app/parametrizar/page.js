@@ -262,9 +262,22 @@ export default function Parametrizar() {
               Formato: <code className="rounded bg-amber-100 px-1">concepto|nombre|cuenta_desde|cuenta_hasta|tipo_doc|campo_valor</code>
             </p>
             <p className="text-xs text-amber-600 mt-1">
-              Separador: coma (,), pipe (|), o tab. Líneas que empiezan con # se ignoran.
+              Separador: pipe (|), coma (,), o tab. Líneas con # se ignoran.
             </p>
-            <input type="file" accept=".csv,.txt" onChange={uploadFile}
+            <div className="mt-2 flex gap-2">
+              <a href="http://127.0.0.1:8000/static/plantilla_conceptos_dian.xlsx"
+                 className="text-xs text-blue-700 underline hover:text-blue-900">
+                📥 Descargar plantilla Excel
+              </a>
+              <a href="http://127.0.0.1:8000/static/plantilla_ejemplo.txt"
+                 className="text-xs text-blue-700 underline hover:text-blue-900">
+                📥 Descargar ejemplo TXT
+              </a>
+            </div>
+            <p className="mt-2 text-[11px] text-amber-800 bg-amber-100 rounded p-2">
+              ⚠️ Los códigos de concepto cargados son aproximados. Verifica contra la resolución DIAN oficial y ajústalos en la plantilla antes de subir.
+            </p>
+            <input type="file" accept=".csv,.txt,.xlsx" onChange={uploadFile}
               className="mt-3 text-sm" />
             {fileMsg && <p className="mt-2 text-sm text-amber-800">{fileMsg}</p>}
           </div>

@@ -1,0 +1,18 @@
+# Plantilla de parametrizacion - Formato 1001 (Pagos y Retenciones)
+# Columnas: concepto|nombre|cuenta_desde|cuenta_hasta|tipo_doc|campo_valor
+# Lineas que empiezan con # se ignoran
+5001|Salarios, honorarios, comisiones y servicios|5105|510599|NIT,CC|closing
+5002|Arrendamientos bienes muebles|5120|512099|NIT,CC|closing
+5003|Arrendamientos bienes inmuebles|5120|512099|NIT,CC|closing
+5004|Intereses y rendimientos financieros|5110|511099|NIT,CC|closing
+5005|Servicios tecnicos y asistencia tecnica|5110|511099|NIT,CC|closing
+5010|Compras de bienes y productos|1435|143599|NIT,CC|debits
+5020|Retencion en la fuente - Salarios|2365|236599|NIT,CC|credits
+5021|Retencion en la fuente - Honorarios|2365|236599|NIT,CC|credits
+5022|Retencion en la fuente - Comisiones|2365|236599|NIT,CC|credits
+5023|Retencion en la fuente - Servicios|2365|236599|NIT,CC|credits
+5024|Retencion en la fuente - Arrendamientos|2365|236599|NIT,CC|credits
+5025|Retencion en la fuente - Intereses|2365|236599|NIT,CC|credits
+5028|Retencion en la fuente - Compras|2365|236599|NIT,CC|credits
+5040|Retencion IVA - Servicios|2367|236799|NIT,CC|credits
+5041|Retencion IVA - Compras|2367|236799|NIT,CC|credits
