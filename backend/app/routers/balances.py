@@ -139,77 +139,87 @@ def exportar_incidencias(tenant_id: int, db: Session = Depends(get_db)):
 # ── Informe de terceros (no encontrados + cancelados) ──
 
 @router.get("/terceros/reporte")
-def reporte_terceros(tenant_id: int, db: Session = Depends(get_db)):
+def reporte_terceros(tenant_id: int, fmt: str = Query("json"),
+                     db: Session = Depends(get_db)):
     bal = (db.query(Balance).filter_by(tenant_id=tenant_id)
            .order_by(Balance.id.desc()).first())
     if not bal:
         raise HTTPException(404, "No hay balances importados.")
 
-    # Terceros no encontrados en la BD
-    not_found = (db.query(ValidationIssue)
-                 .filter_by(balance_id=bal.id, issue_type="THIRD_PARTY_NOT_FOUND")
-                 .all())
+    # No encontrados (vienen de validation_issues - rápido)
+    not_found = [
+        {"cuenta": i.code, "cuenta_nombre": i.account_name,
+         "tercero": i.third_party, "monto": i.amount}
+        for i in db.query(ValidationIssue)
+        .filter_by(balance_id=bal.id, issue_type="THIRD_PARTY_NOT_FOUND").all()
+    ]
 
-    # Buscar terceros cancelados: los que están en RUES con estado CANCELADA
-    # y aparecen en el balance (terceros que SÍ se encontraron pero están cancelados)
-    terceros_balance = set()
-    for issue in not_found:
-        # el issue tiene código de cuenta y third_party (nombre)
-        pass  # usamos directamente los issues
-
-    # Terceros del balance que SÍ están en RUES - búsqueda por lotes
-    rows = (db.query(BalanceRow).filter_by(balance_id=bal.id, row_type="thirdparty").all())
-    
-    # Agrupar por (doc_type, doc_number) para búsqueda en lote
-    pares = list(set((r.doc_type, r.doc_number) for r in rows if r.doc_number and r.doc_type))
-    
-    # Buscar todos los terceros en una sola consulta compuesta
-    terceros_dict = {}
-    from sqlalchemy import or_
-    if pares:
-        conditions = []
-        for dt, dn in pares[:5000]:  # límite razonable
-            conditions.append((ThirdParty.doc_type == dt) & (ThirdParty.doc_number == dn))
-        if conditions:
-            tps = db.query(ThirdParty).filter(or_(*conditions)).all()
-            for tp in tps:
-                terceros_dict[(tp.doc_type, tp.doc_number)] = tp
-    
+    # Cancelados: consulta SQL directa (mucho más rápido que ORM anidado)
     cancelados = []
-    encontrados_count = 0
-    
-    for row in rows:
-        if not row.doc_number or not row.doc_type:
-            continue
-        tp = terceros_dict.get((row.doc_type, row.doc_number))
-        if tp:
-            encontrados_count += 1
-            if tp.estado and "CANCEL" in tp.estado.upper():
-                cancelados.append({
-                    "doc_type": row.doc_type,
-                    "doc_number": row.doc_number,
-                    "name": row.third_party_name,
-                    "estado": tp.estado,
-                    "fecha_actualizacion": tp.updated_at,
-                    "matricula": tp.matricula,
-                    "camara": tp.camara_name,
-                })
-
-    # No encontrados
-    no_encontrados = []
-    for issue in not_found:
-        no_encontrados.append({
-            "cuenta": issue.code,
-            "cuenta_nombre": issue.account_name,
-            "tercero": issue.third_party,
-            "monto": issue.amount,
+    from sqlalchemy import text
+    sql = text("""
+        SELECT DISTINCT br.doc_type, br.doc_number, br.third_party_name,
+               tp.estado, tp.updated_at, tp.matricula, tp.camara_name
+        FROM balance_rows br
+        JOIN third_parties tp ON tp.doc_type = br.doc_type AND tp.doc_number = br.doc_number
+        WHERE br.balance_id = :bid
+          AND br.row_type = 'thirdparty'
+          AND tp.estado LIKE '%CANCEL%'
+        LIMIT 200
+    """)
+    rows = db.execute(sql, {"bid": bal.id}).fetchall()
+    for r in rows:
+        cancelados.append({
+            "doc_type": r[0], "doc_number": r[1], "name": r[2],
+            "estado": r[3], "fecha_actualizacion": r[4],
+            "matricula": r[5], "camara": r[6],
         })
 
+    # Contar total terceros en balance
+    total = db.query(BalanceRow).filter_by(
+        balance_id=bal.id, row_type="thirdparty").count()
+
+    if fmt == "csv":
+        import csv, io as io_mod
+        out = io_mod.StringIO()
+        w = csv.writer(out)
+        w.writerow(["Tipo","Cuenta","Nombre Cuenta","Tercero","Monto","Estado","Fecha Cancelación"])
+        for nf in not_found:
+            w.writerow(["NO ENCONTRADO", nf["cuenta"], nf["cuenta_nombre"],
+                        nf["tercero"], nf["monto"], "", ""])
+        for c in cancelados:
+            w.writerow(["CANCELADO", "", "", c["name"], "",
+                        c["estado"], c["fecha_actualizacion"]])
+        out.seek(0)
+        return Response(
+            content=out.getvalue().encode("utf-8-sig"),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=terceros_empresa{tenant_id}.csv"},
+        )
+
+    if fmt == "excel":
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Terceros"
+        ws.append(["Tipo","Cuenta","Nombre Cuenta","Tercero","Monto","Estado","Fecha Cancelación"])
+        for nf in not_found:
+            ws.append(["NO ENCONTRADO", nf["cuenta"], nf["cuenta_nombre"],
+                       nf["tercero"], nf["monto"], "", ""])
+        for c in cancelados:
+            ws.append(["CANCELADO", "", "", c["name"], "",
+                       c["estado"], c["fecha_actualizacion"]])
+        out = io.BytesIO()
+        wb.save(out); out.seek(0)
+        return Response(
+            content=out.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=terceros_empresa{tenant_id}.xlsx"},
+        )
+
     return {
-        "total_terceros_balance": len(rows),
-        "no_encontrados": no_encontrados,
-        "total_no_encontrados": len(no_encontrados),
+        "total_terceros_balance": total,
+        "no_encontrados": not_found,
+        "total_no_encontrados": len(not_found),
         "cancelados": cancelados,
         "total_cancelados": len(cancelados),
-        "encontrados_activos": encontrados_count - len(cancelados),
     }
