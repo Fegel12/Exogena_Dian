@@ -106,3 +106,59 @@ def eliminar_regla(rule_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
+
+# ── Lista de conceptos DIAN por formato ──
+
+@router.get("/conceptos-dian")
+def listar_conceptos(formato: str = Query("1001"), db: Session = Depends(get_db)):
+    """Devuelve conceptos con código y nombre para dropdowns."""
+    reglas = db.query(TemplateRule).filter_by(format_code=formato)\
+        .order_by(TemplateRule.concepto).all()
+    return [
+        {"codigo": r.concepto, "nombre": r.concepto_nombre,
+         "cuentas_desde": r.cuentas_desde, "cuentas_hasta": r.cuentas_hasta}
+        for r in reglas
+    ]
+
+
+# ── Lista de cuentas del balance ──
+
+@router.get("/cuentas-balance")
+def listar_cuentas_balance(tenant_id: int = Query(1), db: Session = Depends(get_db)):
+    """Devuelve cuentas únicas del balance con código y nombre."""
+    from app.models import BalanceRow
+    bal = db.query(Balance).filter_by(tenant_id=tenant_id)\
+        .order_by(Balance.id.desc()).first()
+    if not bal:
+        return []
+    cuentas = db.query(BalanceRow.code, BalanceRow.account_name)\
+        .filter_by(balance_id=bal.id, row_type="account")\
+        .distinct().order_by(BalanceRow.code).all()
+    return [{"codigo": c[0], "nombre": c[1]} for c in cuentas]
+
+
+# ── Generar TODOS los formatos ──
+
+@router.post("/companies/{tenant_id}/generate-all")
+def generar_todos(tenant_id: int, db: Session = Depends(get_db)):
+    """Genera XML para todos los formatos que tengan reglas configuradas."""
+    from app.services.template_engine import generar_formato
+    bal = db.query(Balance).filter_by(tenant_id=tenant_id)\
+        .order_by(Balance.id.desc()).first()
+    if not bal:
+        raise HTTPException(404, "No hay balances importados.")
+    
+    formatos = [r[0] for r in db.query(TemplateRule.format_code)
+                .distinct().order_by(TemplateRule.format_code).all()]
+    
+    resultados = []
+    for fmt in formatos:
+        try:
+            archivos = generar_formato(bal.id, fmt, db)
+            resultados.append({"formato": fmt, "archivos": len(archivos), "ok": True})
+        except Exception as e:
+            resultados.append({"formato": fmt, "error": str(e), "ok": False})
+    
+    return {"generados": len([r for r in resultados if r["ok"]]),
+            "total_formatos": len(formatos), "detalle": resultados}
+
