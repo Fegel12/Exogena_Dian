@@ -18,7 +18,8 @@ async function getData(formato) {
 }
 
 export default async function Parametrizar({ searchParams }) {
-  const formato = searchParams?.formato || "1001";
+  const params = await searchParams;
+  const formato = params?.formato || "1001";
   const { conceptos, cuentas } = await getData(formato);
 
   return (

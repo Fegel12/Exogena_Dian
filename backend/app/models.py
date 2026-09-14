@@ -2,7 +2,7 @@
 """Modelos de datos. Todas las tablas de negocio llevan tenant_id (multiusuario)."""
 from datetime import datetime, timezone
 from sqlalchemy import (Column, Integer, String, Float, Text, DateTime,
-                        ForeignKey, Boolean, JSON)
+                        ForeignKey, Boolean, JSON, LargeBinary)
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -146,5 +146,8 @@ class GeneratedFile(Base):
     balance_id = Column(Integer, ForeignKey("balances.id"))
     format_code = Column(String(10))
     file_name = Column(String(300))
-    xml_content = Column(Text)
+    xml_content = Column(Text, nullable=True)
+    excel_content = Column(LargeBinary, nullable=True)
+    content_type = Column(String(10), default="xml")  # "xml" o "excel"
+    batch_id = Column(String(36), index=True)  # UUID del lote de generación
     created_at = Column(DateTime, default=_ahora)
