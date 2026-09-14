@@ -93,9 +93,17 @@ def test_genera_xml_1001(db, balance_real):
     db.commit()
     archivos = generar_formato(bal.id, "1001", db)
     assert len(archivos) >= 1
-    gf = db.query(GeneratedFile).order_by(GeneratedFile.id.desc()).first()
-    xml = gf.xml_content
-    assert gf.file_name.startswith("Dmuisca_") and gf.file_name.endswith(".xml")
+    # el generador produce XML y Excel: verificar ambos
+    xml_file = (db.query(GeneratedFile)
+                .filter_by(balance_id=bal.id, content_type="xml")
+                .order_by(GeneratedFile.id.desc()).first())
+    excel_file = (db.query(GeneratedFile)
+                  .filter_by(balance_id=bal.id, content_type="excel").first())
+    assert xml_file is not None
+    assert excel_file is not None
+    xml = xml_file.xml_content
+    assert xml_file.file_name.startswith("Dmuisca_") and xml_file.file_name.endswith(".xml")
+    assert excel_file.file_name.endswith(".xlsx") and excel_file.excel_content is not None
     assert "<mas>" in xml and "</mas>" in xml
     for k in ("Ano", "CodCpt", "Formato", "Version", "NumEnvio", "FecEnvio",
               "FecInicial", "FecFinal", "ValorTotal", "CantReg"):

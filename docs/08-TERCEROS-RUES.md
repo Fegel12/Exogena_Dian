@@ -36,7 +36,7 @@ Detalles importantes:
 - Si el mismo número aparece varias veces, se guarda **una sola vez**; si alguna matrícula del mismo número está ACTIVA, se prefiere ese estado.
 - Carga en lotes con modo WAL de SQLite para velocidad.
 
-## Archivo de muestra
+## Qué hace el script
 
 `backend/scripts/cargar_terceros.py`:
 1. Lee el TXT línea por línea con el módulo `csv` (maneja comas dentro de comillas).

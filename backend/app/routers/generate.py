@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Balance, GeneratedFile, Tenant, TemplateRule
 from app.services.template_engine import generar_formato, exportar_excel
+import uuid
 
 router = APIRouter(prefix="/api", tags=["generacion"])
 
@@ -27,13 +28,45 @@ def generar(tenant_id: int, formato: str = Query("1001"), db: Session = Depends(
 def listar_archivos(tenant_id: int, db: Session = Depends(get_db)):
     if not db.get(Tenant, tenant_id):
         raise HTTPException(404, "Empresa no encontrada.")
+    """Devuelve archivos agrupados por batch (lote de generación)."""
+    from sqlalchemy import func, desc
+    files = db.query(GeneratedFile).filter_by(tenant_id=tenant_id)\
+        .order_by(desc(GeneratedFile.created_at)).limit(200).all()
+
+    # Agrupar por batch_id
+    batches = {}
+    for f in files:
+        bid = f.batch_id or "sin-lote"
+        if bid not in batches:
+            batches[bid] = {
+                "batch_id": bid,
+                "fecha": str(f.created_at or ""),
+                "archivos": [],
+            }
+        batches[bid]["archivos"].append({
+            "id": f.id,
+            "format_code": f.format_code,
+            "file_name": f.file_name,
+            "content_type": f.content_type or "xml",
+            "created_at": str(f.created_at or ""),
+        })
+
+    # Ordenar batches por fecha descendente
+    resultado = sorted(batches.values(), key=lambda b: b["fecha"], reverse=True)
+    return resultado
+
+
+@router.get("/companies/{tenant_id}/files/flat")
+def listar_archivos_flat(tenant_id: int, db: Session = Depends(get_db)):
+    if not db.get(Tenant, tenant_id):
+        raise HTTPException(404, "Empresa no encontrada.")
     return [
         {"id": f.id, "format_code": f.format_code, "file_name": f.file_name,
+         "content_type": f.content_type or "xml", "batch_id": f.batch_id,
          "created_at": str(f.created_at or "")}
         for f in db.query(GeneratedFile).filter_by(tenant_id=tenant_id)
         .order_by(GeneratedFile.id.desc()).limit(100).all()
     ]
-
 
 
 @router.get("/files/{file_id}/download")
@@ -41,8 +74,16 @@ def descargar(file_id: int, db: Session = Depends(get_db)):
     gf = db.get(GeneratedFile, file_id)
     if not gf:
         raise HTTPException(404, "Archivo no encontrado.")
+
+    if gf.content_type == "excel" and gf.excel_content:
+        return Response(
+            content=gf.excel_content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{gf.file_name}"'},
+        )
+    # XML (default)
     return Response(
-        content=gf.xml_content.encode("ISO-8859-1"),
+        content=(gf.xml_content or "").encode("ISO-8859-1"),
         media_type="application/xml",
         headers={"Content-Disposition": f'attachment; filename="{gf.file_name}"'},
     )
@@ -296,6 +337,34 @@ def listar_cuentas_balance(tenant_id: int = Query(1), db: Session = Depends(get_
     return [{"codigo": c[0], "nombre": c[1]} for c in cuentas]
 
 
+@router.delete("/files/{file_id}")
+def eliminar_archivo(file_id: int, db: Session = Depends(get_db)):
+    gf = db.get(GeneratedFile, file_id)
+    if not gf:
+        raise HTTPException(404, "Archivo no encontrado.")
+    db.delete(gf)
+    db.commit()
+    return {"ok": True, "msg": f"Archivo {gf.file_name} eliminado."}
+
+
+@router.delete("/batches/{batch_id}")
+def eliminar_lote(batch_id: str, tenant_id: int = Query(1), db: Session = Depends(get_db)):
+    """Elimina todos los archivos de un lote. 'sin-lote' elimina archivos sin batch_id."""
+    if batch_id == "sin-lote":
+        from sqlalchemy import or_
+        files = db.query(GeneratedFile).filter_by(tenant_id=tenant_id)\
+            .filter(or_(GeneratedFile.batch_id == None, GeneratedFile.batch_id == "")).all()
+    else:
+        files = db.query(GeneratedFile).filter_by(batch_id=batch_id, tenant_id=tenant_id).all()
+    if not files:
+        raise HTTPException(404, "Lote no encontrado o sin archivos.")
+    n = len(files)
+    for f in files:
+        db.delete(f)
+    db.commit()
+    return {"ok": True, "msg": f"Lote eliminado: {n} archivos."}
+
+
 # ── Generar TODOS los formatos ──
 
 @router.post("/companies/{tenant_id}/generate-all")
@@ -310,14 +379,15 @@ def generar_todos(tenant_id: int, db: Session = Depends(get_db)):
     formatos = [r[0] for r in db.query(TemplateRule.format_code)
                 .distinct().order_by(TemplateRule.format_code).all()]
     
+    batch_id = str(uuid.uuid4())
     resultados = []
     for fmt in formatos:
         try:
-            archivos = generar_formato(bal.id, fmt, db)
+            archivos = generar_formato(bal.id, fmt, db, batch_id=batch_id)
             resultados.append({"formato": fmt, "archivos": len(archivos), "ok": True})
         except Exception as e:
             resultados.append({"formato": fmt, "error": str(e), "ok": False})
     
     return {"generados": len([r for r in resultados if r["ok"]]),
-            "total_formatos": len(formatos), "detalle": resultados}
+            "total_formatos": len(formatos), "batch_id": batch_id, "detalle": resultados}
 
